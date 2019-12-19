@@ -10,12 +10,14 @@ build:
 android:
 	gomobile bind -target=android github.com/algorand/go-algorand-sdk/crypto
 	gomobile bind -target=android github.com/algorand/go-algorand-sdk/auction
+	gomobile bind -target=android github.com/algorand/go-algorand-sdk/utils
 	gomobile bind -target=android github.com/algorand/go-algorand-sdk/transaction
 	gomobile bind -target=android github.com/algorand/go-algorand-sdk/mnemonic
 	gomobile bind -target=android github.com/algorand/go-algorand-sdk/encoding/msgpack
 
 ios:
 	gomobile bind -target=ios github.com/algorand/go-algorand-sdk/crypto
+	gomobile bind -target=ios github.com/algorand/go-algorand-sdk/utils
 	gomobile bind -target=ios github.com/algorand/go-algorand-sdk/auction
 	gomobile bind -target=ios github.com/algorand/go-algorand-sdk/transaction
 	gomobile bind -target=ios github.com/algorand/go-algorand-sdk/mnemonic
