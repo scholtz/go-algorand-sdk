@@ -42,3 +42,12 @@ func GenerateAddressFromSK(sk []byte) (string, error) {
 	}
 	return a.String(), nil
 }
+
+func GenerateAddressFromPublicKey(pk []byte) (string, error) {
+	var a types.Address
+	n := copy(a[:], pk)
+	if n != ed25519.PublicKeySize {
+		return "", fmt.Errorf("given public key has the wrong size, expected %d, got %d", ed25519.PublicKeySize, n)
+	}
+	return a.String(), nil
+}

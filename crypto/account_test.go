@@ -22,7 +22,7 @@ func TestKeyGenerationSAddress(t *testing.T) {
 	// Public key should not be empty
 	require.NotEqual(t, sk, []byte{})
 
-	addr := GenerateAddressFromSK(sk)
+	addr, _ := GenerateAddressFromSK(sk)
 
 	require.Len(t, addr, 58)
 
