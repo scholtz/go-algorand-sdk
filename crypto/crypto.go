@@ -29,7 +29,7 @@ func RandomBytes(s []byte) {
 }
 
 // SignTransaction accepts a private key and a transaction, and returns the
-// bytes of a signed bid in a note.
+// bytes of a signed txn.
 func SignTransaction(sk []byte, encodedTx []byte) (stxBytes []byte, err error) {
 	if len(sk) != ed25519.PrivateKeySize {
 		err = fmt.Errorf("Incorrect pricateKey length expected %d, got %d", ed25519.PrivateKeySize, len(sk))
@@ -66,14 +66,14 @@ func SignTransaction(sk []byte, encodedTx []byte) (stxBytes []byte, err error) {
 	return
 }
 
+// AttachSignature accepts a signature and a transaction, and returns the bytes of a the signed transaction
 func AttachSignature(signature, encodedTx []byte) (stxBytes []byte, err error) {
 	if len(signature) != ed25519.SignatureSize {
 		err = fmt.Errorf("incorrect signature length expected %d, got %d", ed25519.SignatureSize, len(signature))
 		return
 	}
 
-	// Copy the resulting signature into a Signature, and check that it's
-	// the expected length
+	// Copy signature into a Signature, and check that it's the expected length
 	var s types.Signature
 	n := copy(s[:], signature)
 	if n != len(s) {
