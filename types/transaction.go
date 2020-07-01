@@ -1,5 +1,13 @@
 package types
 
+import (
+	"bytes"
+	"crypto/sha512"
+	"encoding/base32"
+
+	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
+)
+
 // Transaction describes a transaction that can appear in a block.
 type Transaction struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
@@ -138,4 +146,30 @@ type TxGroup struct {
 	// valid.  Each hash in the list is a hash of a transaction with
 	// the `Group` field omitted.
 	TxGroupHashes []Digest `codec:"txlist"`
+}
+
+// rawTransactionBytesToSign returns the byte form of the tx that we actually sign
+// and compute txID from.
+func rawTransactionBytesToSign(tx Transaction) []byte {
+	// Encode the transaction as msgpack
+	encodedTx := msgpack.Encode(tx)
+
+	// Prepend the hashable prefix
+	msgParts := [][]byte{[]byte("TX"), encodedTx}
+	return bytes.Join(msgParts, nil)
+}
+
+// TransactionID is the unique identifier for a Transaction in progress
+func TransactionID(tx Transaction) (txid []byte) {
+	toBeSigned := rawTransactionBytesToSign(tx)
+	txid32 := sha512.Sum512_256(toBeSigned)
+	txid = txid32[:]
+	return
+}
+
+// txIDFromTransaction is a convenience function for generating txID from txn
+func txIDFromTransaction(tx Transaction) (txid string) {
+	txidBytes := TransactionID(tx)
+	txid = base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(txidBytes[:])
+	return
 }
