@@ -168,7 +168,7 @@ func TransactionID(tx Transaction) (txid []byte) {
 }
 
 // txIDFromTransaction is a convenience function for generating txID from txn
-func txIDFromTransaction(tx Transaction) (txid string) {
+func TxIDFromTransaction(tx Transaction) (txid string) {
 	txidBytes := TransactionID(tx)
 	txid = base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(txidBytes[:])
 	return

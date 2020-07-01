@@ -2,7 +2,9 @@ package utils
 
 import (
 	"encoding/base64"
+
 	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
+	"github.com/algorand/go-algorand-sdk/transaction"
 	"github.com/algorand/go-algorand-sdk/types"
 )
 
@@ -33,7 +35,7 @@ func PendingResultsToTXID(response string) ([]string, error) {
 
 	var res []string
 	for _, txn := range result.TopTransactions {
-		res = append(res, txIDFromTransaction(txn.Txn))
+		res = append(res, transaction.TxIDFromTransaction(txn.Txn))
 	}
 
 	return res, nil
