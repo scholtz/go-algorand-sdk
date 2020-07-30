@@ -298,6 +298,69 @@ func MakePaymentTxn(from, to string, feePerByte, amount, firstRound, lastRound i
 	return
 }
 
+// MakeRekeyTxn constructs a rekey transaction using the passed parameters.
+func MakeRekeyTxn(from, rekeyTo string, feePerByte, firstRound, lastRound int64, genesisID string, genesisHash []byte) (encoded []byte, err error) {
+	if feePerByte < 0 || firstRound < 0 || lastRound < 0 {
+		return nil, errNegativeArgument
+	}
+
+	// Decode from address
+	fromAddr, err := types.DecodeAddress(from)
+	if err != nil {
+		return
+	}
+
+	// Decode to address
+	rekey, err := types.DecodeAddress(rekeyTo)
+	if err != nil {
+		return
+	}
+
+	// Decode GenesisHash
+	if len(genesisHash) == 0 {
+		err = fmt.Errorf("payment transaction must contain a genesisHash")
+		return
+	}
+
+	var gh types.Digest
+	copy(gh[:], genesisHash)
+
+	// Build the transaction
+	tx := types.Transaction{
+		Type: types.PaymentTx,
+		Header: types.Header{
+			Sender:      fromAddr,
+			Fee:         types.Algos(feePerByte),
+			FirstValid:  types.Round(firstRound),
+			LastValid:   types.Round(lastRound),
+			GenesisID:   genesisID,
+			GenesisHash: gh,
+			RekeyTo: rekey,
+		},
+		PaymentTxnFields: types.PaymentTxnFields{
+			Receiver:         fromAddr,
+			Amount:           types.Algos(0),
+		},
+	}
+
+	// Get the right fee
+	l, err := estimateSize(tx)
+	if err != nil {
+		return
+	}
+
+	tx.Fee = types.Algos(uint64(feePerByte) * l)
+
+	if tx.Fee < minFee {
+		tx.Fee = minFee
+	}
+
+	encoded = msgpack.Encode(tx)
+
+	return
+}
+
+
 func estimateSize(tx types.Transaction) (uint64, error) {
 	key := crypto.GenerateSK()
 	en, err := crypto.SignTransaction(key, msgpack.Encode(tx))

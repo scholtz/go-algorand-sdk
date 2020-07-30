@@ -31,10 +31,11 @@ type Transaction struct {
 type SignedTxn struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
 
-	Sig  Signature   `codec:"sig"`
-	Msig MultisigSig `codec:"msig"`
-	Lsig LogicSig    `codec:"lsig"`
-	Txn  Transaction `codec:"txn"`
+	Sig      Signature   `codec:"sig"`
+	Msig     MultisigSig `codec:"msig"`
+	Lsig     LogicSig    `codec:"lsig"`
+	Txn      Transaction `codec:"txn"`
+	AuthAddr Address     `codec:"sgnr"`
 }
 
 // KeyregTxnFields captures the fields used for key registration transactions.
@@ -134,6 +135,19 @@ type Header struct {
 	// transaction group (and, if so, specifies the hash
 	// of a TxGroup).
 	Group Digest `codec:"grp"`
+
+	// Lease enforces mutual exclusion of transactions.  If this field is
+	// nonzero, then once the transaction is confirmed, it acquires the
+	// lease identified by the (Sender, Lease) pair of the transaction until
+	// the LastValid round passes.  While this transaction possesses the
+	// lease, no other transaction specifying this lease can be confirmed.
+	Lease [32]byte `codec:"lx"`
+
+	// RekeyTo, if nonzero, sets the sender's AuthAddr to the given address
+	// If the RekeyTo address is the sender's actual address, the AuthAddr is set to zero
+	// This allows "re-keying" a long-lived account -- rotating the signing key, changing
+	// membership of a multisig account, etc.
+	RekeyTo Address `codec:"rekey"`
 }
 
 // TxGroup describes a group of transactions that must appear

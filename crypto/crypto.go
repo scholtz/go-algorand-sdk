@@ -61,6 +61,19 @@ func SignTransaction(sk []byte, encodedTx []byte) (stxBytes []byte, err error) {
 		Txn: tx,
 	}
 
+	// Handle rekey
+	// extract PK
+	var r types.Address
+	n = copy(r[:], sk[32:])
+	if n != len(r) {
+		err = errFailedToCopyPK
+	}
+
+	// If the sender is different than the secret key corresponding PK, append authAddr
+	if tx.Sender != r {
+		stx.AuthAddr = r
+	}
+
 	// Encode the SignedTxn
 	stxBytes = msgpack.Encode(stx)
 	return
