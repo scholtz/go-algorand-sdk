@@ -112,6 +112,45 @@ func AttachSignature(signature, encodedTx []byte) (stxBytes []byte, err error) {
 	return
 }
 
+// AttachSignatureWithSigner accepts a signature and a transaction, and returns the bytes of a the signed transaction
+func AttachSignatureWithSigner(signature, encodedTx []byte, signer string) (stxBytes []byte, err error) {
+	if len(signature) != ed25519.SignatureSize {
+		err = fmt.Errorf("incorrect signature length expected %d, got %d", ed25519.SignatureSize, len(signature))
+		return
+	}
+
+	// Copy signature into a Signature, and check that it's the expected length
+	var s types.Signature
+	n := copy(s[:], signature)
+	if n != len(s) {
+		err = errInvalidSignatureReturned
+		return
+	}
+
+	var tx types.Transaction
+	err = msgpack.Decode(encodedTx, &tx)
+
+	if err != nil {
+		return nil, err
+	}
+
+	signerAddr, err := types.DecodeAddress(signer)
+	if err != nil {
+		return nil, err
+	}
+
+	// Construct the SignedTxn
+	stx := types.SignedTxn{
+		Sig:      s,
+		Txn:      tx,
+		AuthAddr: signerAddr,
+	}
+
+	// Encode the SignedTxn
+	stxBytes = msgpack.Encode(stx)
+	return
+}
+
 // SignBid accepts a private key and a bid, and returns the signature of the
 // bid under that key
 func SignBid(sk []byte, encodedBid []byte) (sBid []byte, err error) {
