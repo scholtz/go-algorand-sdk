@@ -112,7 +112,7 @@ func AttachSignature(signature, encodedTx []byte) (stxBytes []byte, err error) {
 	return
 }
 
-// AttachSignatureWithSigner accepts a signature and a transaction, and returns the bytes of a the signed transaction
+// AttachSignatureWithSigner accepts a signature, a transaction, and a signer address and returns the bytes of a the signed transaction
 func AttachSignatureWithSigner(signature, encodedTx []byte, signer string) (stxBytes []byte, err error) {
 	if len(signature) != ed25519.SignatureSize {
 		err = fmt.Errorf("incorrect signature length expected %d, got %d", ed25519.SignatureSize, len(signature))
