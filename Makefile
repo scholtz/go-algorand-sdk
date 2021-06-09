@@ -21,3 +21,9 @@ integration:
 
 docker-test:
 	./test/docker/run_docker.sh
+
+android:
+	gomobile bind -target=android github.com/algorand/go-algorand-sdk/mobile
+
+ios:
+	gomobile bind -target=ios -o=AlgoSDK.framework -prefix=Algo github.com/algorand/go-algorand-sdk/mobile

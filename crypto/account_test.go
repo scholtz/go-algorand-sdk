@@ -15,7 +15,7 @@ func TestKeyGeneration(t *testing.T) {
 	// Public key should not be empty
 	require.NotEqual(t, kp.PublicKey, ed25519.PublicKey{})
 
-	// Public key should not be empty
+	// Private key should not be empty
 	require.NotEqual(t, kp.PrivateKey, ed25519.PrivateKey{})
 
 	// Address should be identical to public key
