@@ -51,9 +51,10 @@ func convertSuggestedParams(params *SuggestedParams) (internalParams types.Sugge
 
 // MakePaymentTxn constructs a payment transaction using the passed parameters.
 // `from` and `to` addresses should be checksummed, human-readable addresses
-func MakePaymentTxn(from, to string, amount int64, note []byte, closeRemainderTo string, params *SuggestedParams) (encoded []byte, err error) {
-	if amount < 0 {
-		err = errNegativeArgument
+func MakePaymentTxn(from, to string, amount *Uint64, note []byte, closeRemainderTo string, params *SuggestedParams) (encoded []byte, err error) {
+	internalAmount, err := amount.Extract()
+	if err != nil {
+		err = fmt.Errorf("Could not decode transaction amount: %v", err)
 		return
 	}
 
@@ -62,7 +63,7 @@ func MakePaymentTxn(from, to string, amount int64, note []byte, closeRemainderTo
 		return
 	}
 
-	tx, err := future.MakePaymentTxn(from, to, uint64(amount), note, closeRemainderTo, internalParams)
+	tx, err := future.MakePaymentTxn(from, to, internalAmount, note, closeRemainderTo, internalParams)
 	if err == nil {
 		encoded = msgpack.Encode(tx)
 	}
@@ -89,9 +90,15 @@ func MakeRekeyTxn(from, rekeyTo string, params *SuggestedParams) (encoded []byte
 // MakeAssetCreateTxn constructs an asset creation transaction using the passed parameters.
 // - account is a checksummed, human-readable address which will send the transaction.
 // - note is a byte array
-func MakeAssetCreateTxn(account string, note []byte, params *SuggestedParams, total int64, decimals int32, defaultFrozen bool, manager, reserve, freeze, clawback, unitName, assetName, url, metadataHash string) (encoded []byte, err error) {
-	if total < 0 || decimals < 0 {
+func MakeAssetCreateTxn(account string, note []byte, params *SuggestedParams, total *Uint64, decimals int32, defaultFrozen bool, manager, reserve, freeze, clawback, unitName, assetName, url string, metadataHash []byte) (encoded []byte, err error) {
+	if decimals < 0 {
 		err = errNegativeArgument
+		return
+	}
+
+	internalTotal, err := total.Extract()
+	if err != nil {
+		err = fmt.Errorf("Could not extract asset total: %v", err)
 		return
 	}
 
@@ -100,7 +107,7 @@ func MakeAssetCreateTxn(account string, note []byte, params *SuggestedParams, to
 		return
 	}
 
-	tx, err := future.MakeAssetCreateTxn(account, note, internalParams, uint64(total), uint32(decimals), defaultFrozen, manager, reserve, freeze, clawback, unitName, assetName, url, metadataHash)
+	tx, err := future.MakeAssetCreateTxn(account, note, internalParams, internalTotal, uint32(decimals), defaultFrozen, manager, reserve, freeze, clawback, unitName, assetName, url, string(metadataHash))
 	if err == nil {
 		encoded = msgpack.Encode(tx)
 	}
@@ -113,7 +120,7 @@ func MakeAssetCreateTxn(account string, note []byte, params *SuggestedParams, to
 // cannot be changed after becoming zero); to keep a key
 // unchanged, you must specify that key.
 // - account is a checksummed, human-readable address for which we register the given participation key.
-func MakeAssetConfigTxn(account string, note []byte, params *SuggestedParams, index int64, newManager, newReserve, newFreeze, newClawback, assetName, unitName, url string, metadataHash []byte) (encoded []byte, err error) {
+func MakeAssetConfigTxn(account string, note []byte, params *SuggestedParams, index int64, newManager, newReserve, newFreeze, newClawback string) (encoded []byte, err error) {
 	if index < 0 {
 		err = errNegativeArgument
 		return
@@ -141,9 +148,15 @@ func MakeAssetConfigTxn(account string, note []byte, params *SuggestedParams, in
 // - note is an arbitrary byte array
 // - creator is the address of the asset creator
 // - index is the asset index
-func MakeAssetTransferTxn(account, recipient, closeAssetsTo string, amount int64, note []byte, params *SuggestedParams, index int64) (encoded []byte, err error) {
-	if index < 0 || amount < 0 {
+func MakeAssetTransferTxn(account, recipient, closeAssetsTo string, amount *Uint64, note []byte, params *SuggestedParams, index int64) (encoded []byte, err error) {
+	if index < 0 {
 		err = errNegativeArgument
+		return
+	}
+
+	internalAmount, err := amount.Extract()
+	if err != nil {
+		err = fmt.Errorf("Could not decode transaction amount: %v", err)
 		return
 	}
 
@@ -152,7 +165,7 @@ func MakeAssetTransferTxn(account, recipient, closeAssetsTo string, amount int64
 		return
 	}
 
-	tx, err := future.MakeAssetTransferTxn(account, recipient, uint64(amount), note, internalParams, closeAssetsTo, uint64(index))
+	tx, err := future.MakeAssetTransferTxn(account, recipient, internalAmount, note, internalParams, closeAssetsTo, uint64(index))
 	if err == nil {
 		encoded = msgpack.Encode(tx)
 	}
@@ -189,9 +202,15 @@ func MakeAssetAcceptanceTxn(account string, note []byte, params *SuggestedParams
 // - recipient is a checksummed, human-readable address; it will receive the revoked assets
 // - amount defines the number of assets to clawback
 // - index is the asset index
-func MakeAssetRevocationTxn(account, target string, amount int64, recipient string, note []byte, params *SuggestedParams, index int64) (encoded []byte, err error) {
-	if amount < 0 || index < 0 {
+func MakeAssetRevocationTxn(account, target string, amount *Uint64, recipient string, note []byte, params *SuggestedParams, index int64) (encoded []byte, err error) {
+	if index < 0 {
 		err = errNegativeArgument
+		return
+	}
+
+	internalAmount, err := amount.Extract()
+	if err != nil {
+		err = fmt.Errorf("Could not decode transaction amount: %v", err)
 		return
 	}
 
@@ -200,7 +219,7 @@ func MakeAssetRevocationTxn(account, target string, amount int64, recipient stri
 		return
 	}
 
-	tx, err := future.MakeAssetRevocationTxn(account, target, uint64(amount), recipient, note, internalParams, uint64(index))
+	tx, err := future.MakeAssetRevocationTxn(account, target, internalAmount, recipient, note, internalParams, uint64(index))
 	if err == nil {
 		encoded = msgpack.Encode(tx)
 	}
@@ -295,158 +314,413 @@ func MakeAssetFreezeTxn(account string, note []byte, params *SuggestedParams, as
 //                 side effects this transaction will have if it successfully makes
 //                 it into a block.
 
-// // MakeApplicationCreateTx makes a transaction for creating an application (see above for args desc.)
-// // - optIn: true for opting in on complete, false for no-op.
-// func MakeApplicationCreateTx(
-// 	optIn bool,
-// 	approvalProg []byte,
-// 	clearProg []byte,
-// 	globalSchemaUint int64,
-// 	globalSchemaByteSlice int64,
-// 	localSchemaUint int64,
-// 	localSchemaByteSlice int64,
-// 	appArgs [][]byte, // TODO: fix
-// 	accounts []string, // TODO: fix
-// 	foreignApps []uint64, // TODO: fix
-// 	foreignAssets []uint64, // TODO: fix
-// 	params *SuggestedParams,
-// 	sender string,
-// 	note []byte) (encoded []byte, err error) {
+// MakeApplicationCreateTx makes a transaction for creating an application (see above for args desc.)
+// - optIn: true for opting in on complete, false for no-op.
+func MakeApplicationCreateTx(
+	optIn bool,
+	approvalProg []byte,
+	clearProg []byte,
+	globalSchemaUint int64,
+	globalSchemaByteSlice int64,
+	localSchemaUint int64,
+	localSchemaByteSlice int64,
+	extraPages int32,
+	appArgs *BytesArray,
+	accounts *StringArray,
+	foreignApps *Int64Array,
+	foreignAssets *Int64Array,
+	params *SuggestedParams,
+	sender string,
+	note []byte,
+) (encoded []byte, err error) {
+	if globalSchemaUint < 0 || globalSchemaByteSlice < 0 || localSchemaUint < 0 || localSchemaByteSlice < 0 || extraPages < 0 {
+		err = errNegativeArgument
+		return
+	}
 
-// 	if globalSchemaUint < 0 || globalSchemaByteSlice < 0 || localSchemaUint < 0 || localSchemaByteSlice < 0 {
-// 		err = errNegativeArgument
-// 		return
-// 	}
+	internalForeignApps := make([]uint64, foreignApps.Length())
+	for i := range internalForeignApps {
+		value := foreignApps.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignApps[i] = uint64(value)
+	}
 
-// 	internalParams, err := convertSuggestedParams(params)
-// 	if err != nil {
-// 		return
-// 	}
+	internalForeignAssets := make([]uint64, foreignAssets.Length())
+	for i := range internalForeignAssets {
+		value := foreignAssets.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignAssets[i] = uint64(value)
+	}
 
-// 	globalSchema := types.StateSchema{
-// 		NumUint:      uint64(globalSchemaUint),
-// 		NumByteSlice: uint64(globalSchemaByteSlice),
-// 	}
+	internalParams, err := convertSuggestedParams(params)
+	if err != nil {
+		return
+	}
 
-// 	localSchema := types.StateSchema{
-// 		NumUint:      uint64(localSchemaUint),
-// 		NumByteSlice: uint64(localSchemaByteSlice),
-// 	}
+	globalSchema := types.StateSchema{
+		NumUint:      uint64(globalSchemaUint),
+		NumByteSlice: uint64(globalSchemaByteSlice),
+	}
 
-// 	senderAddr, err := types.DecodeAddress(sender)
-// 	if err != nil {
-// 		err = fmt.Errorf("Could not decode sender address: %v", err)
-// 		return
-// 	}
+	localSchema := types.StateSchema{
+		NumUint:      uint64(localSchemaUint),
+		NumByteSlice: uint64(localSchemaByteSlice),
+	}
 
-// 	tx, err := future.MakeApplicationCreateTx(optIn, approvalProg, clearProg, globalSchema, localSchema, appArgs, accounts, foreignApps, foreignAssets, internalParams, senderAddr, note, nil, nil, nil)
-// 	if err == nil {
-// 		encoded = msgpack.Encode(tx)
-// 	}
+	senderAddr, err := types.DecodeAddress(sender)
+	if err != nil {
+		err = fmt.Errorf("Could not decode sender address: %v", err)
+		return
+	}
 
-// 	return
-// }
+	tx, err := future.MakeApplicationCreateTxWithExtraPages(optIn, approvalProg, clearProg, globalSchema, localSchema, appArgs.Extract(), accounts.Extract(), internalForeignApps, internalForeignAssets, internalParams, senderAddr, note, types.Digest{}, [32]byte{}, types.Address{}, uint32(extraPages))
+	if err == nil {
+		encoded = msgpack.Encode(tx)
+	}
 
-// // MakeApplicationUpdateTx makes a transaction for updating an application's programs (see above for args desc.)
-// func MakeApplicationUpdateTx(
-// 	appIdx uint64,
-// 	appArgs [][]byte,
-// 	accounts []string,
-// 	foreignApps []uint64,
-// 	foreignAssets []uint64,
-// 	approvalProg []byte,
-// 	clearProg []byte,
-// 	sp types.SuggestedParams,
-// 	sender types.Address,
-// 	note []byte,
-// 	group types.Digest,
-// 	lease [32]byte,
-// 	rekeyTo types.Address) (tx types.Transaction, err error) {
-// 	// TODO: implement
-// }
+	return
+}
 
-// // MakeApplicationDeleteTx makes a transaction for deleting an application (see above for args desc.)
-// func MakeApplicationDeleteTx(
-// 	appIdx uint64,
-// 	appArgs [][]byte,
-// 	accounts []string,
-// 	foreignApps []uint64,
-// 	foreignAssets []uint64,
-// 	sp types.SuggestedParams,
-// 	sender types.Address,
-// 	note []byte,
-// 	group types.Digest,
-// 	lease [32]byte,
-// 	rekeyTo types.Address) (tx types.Transaction, err error) {
-// 	// TODO: implement
-// }
+// MakeApplicationUpdateTx makes a transaction for updating an application's programs (see above for args desc.)
+func MakeApplicationUpdateTx(
+	appIdx int64,
+	appArgs *BytesArray,
+	accounts *StringArray,
+	foreignApps *Int64Array,
+	foreignAssets *Int64Array,
+	approvalProg []byte,
+	clearProg []byte,
+	params *SuggestedParams,
+	sender string,
+	note []byte,
+) (encoded []byte, err error) {
+	if appIdx < 0 {
+		err = errNegativeArgument
+		return
+	}
 
-// // MakeApplicationOptInTx makes a transaction for opting in to (allocating
-// // some account-specific state for) an application (see above for args desc.)
-// func MakeApplicationOptInTx(
-// 	appIdx uint64,
-// 	appArgs [][]byte,
-// 	accounts []string,
-// 	foreignApps []uint64,
-// 	foreignAssets []uint64,
-// 	sp types.SuggestedParams,
-// 	sender types.Address,
-// 	note []byte,
-// 	group types.Digest,
-// 	lease [32]byte,
-// 	rekeyTo types.Address) (tx types.Transaction, err error) {
-// 	// TODO: implement
-// }
+	internalForeignApps := make([]uint64, foreignApps.Length())
+	for i := range internalForeignApps {
+		value := foreignApps.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignApps[i] = uint64(value)
+	}
 
-// // MakeApplicationCloseOutTx makes a transaction for closing out of
-// // (deallocating all account-specific state for) an application (see above for args desc.)
-// func MakeApplicationCloseOutTx(
-// 	appIdx uint64,
-// 	appArgs [][]byte,
-// 	accounts []string,
-// 	foreignApps []uint64,
-// 	foreignAssets []uint64,
-// 	sp types.SuggestedParams,
-// 	sender types.Address,
-// 	note []byte,
-// 	group types.Digest,
-// 	lease [32]byte,
-// 	rekeyTo types.Address) (tx types.Transaction, err error) {
-// 	// TODO: implement
-// }
+	internalForeignAssets := make([]uint64, foreignAssets.Length())
+	for i := range internalForeignAssets {
+		value := foreignAssets.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignAssets[i] = uint64(value)
+	}
 
-// // MakeApplicationClearStateTx makes a transaction for clearing out all
-// // account-specific state for an application. It may not be rejected by the
-// // application's logic. (see above for args desc.)
-// func MakeApplicationClearStateTx(
-// 	appIdx uint64,
-// 	appArgs [][]byte,
-// 	accounts []string,
-// 	foreignApps []uint64,
-// 	foreignAssets []uint64,
-// 	sp types.SuggestedParams,
-// 	sender types.Address,
-// 	note []byte,
-// 	group types.Digest,
-// 	lease [32]byte,
-// 	rekeyTo types.Address) (tx types.Transaction, err error) {
-// 	// TODO: implement
-// }
+	internalParams, err := convertSuggestedParams(params)
+	if err != nil {
+		return
+	}
 
-// // MakeApplicationNoOpTx makes a transaction for interacting with an existing
-// // application, potentially updating any account-specific local state and
-// // global state associated with it. (see above for args desc.)
-// func MakeApplicationNoOpTx(
-// 	appIdx uint64,
-// 	appArgs [][]byte,
-// 	accounts []string,
-// 	foreignApps []uint64,
-// 	foreignAssets []uint64,
-// 	sp types.SuggestedParams,
-// 	sender types.Address,
-// 	note []byte,
-// 	group types.Digest,
-// 	lease [32]byte,
-// 	rekeyTo types.Address) (tx types.Transaction, err error) {
-// 	// TODO: implement
-// }
+	senderAddr, err := types.DecodeAddress(sender)
+	if err != nil {
+		err = fmt.Errorf("Could not decode sender address: %v", err)
+		return
+	}
+
+	tx, err := future.MakeApplicationUpdateTx(uint64(appIdx), appArgs.Extract(), accounts.Extract(), internalForeignApps, internalForeignAssets, approvalProg, clearProg, internalParams, senderAddr, note, types.Digest{}, [32]byte{}, types.Address{})
+	if err == nil {
+		encoded = msgpack.Encode(tx)
+	}
+
+	return
+}
+
+// MakeApplicationDeleteTx makes a transaction for deleting an application (see above for args desc.)
+func MakeApplicationDeleteTx(
+	appIdx int64,
+	appArgs *BytesArray,
+	accounts *StringArray,
+	foreignApps *Int64Array,
+	foreignAssets *Int64Array,
+	params *SuggestedParams,
+	sender string,
+	note []byte,
+) (encoded []byte, err error) {
+	if appIdx < 0 {
+		err = errNegativeArgument
+		return
+	}
+
+	internalForeignApps := make([]uint64, foreignApps.Length())
+	for i := range internalForeignApps {
+		value := foreignApps.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignApps[i] = uint64(value)
+	}
+
+	internalForeignAssets := make([]uint64, foreignAssets.Length())
+	for i := range internalForeignAssets {
+		value := foreignAssets.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignAssets[i] = uint64(value)
+	}
+
+	internalParams, err := convertSuggestedParams(params)
+	if err != nil {
+		return
+	}
+
+	senderAddr, err := types.DecodeAddress(sender)
+	if err != nil {
+		err = fmt.Errorf("Could not decode sender address: %v", err)
+		return
+	}
+
+	tx, err := future.MakeApplicationDeleteTx(uint64(appIdx), appArgs.Extract(), accounts.Extract(), internalForeignApps, internalForeignAssets, internalParams, senderAddr, note, types.Digest{}, [32]byte{}, types.Address{})
+	if err == nil {
+		encoded = msgpack.Encode(tx)
+	}
+
+	return
+}
+
+// MakeApplicationOptInTx makes a transaction for opting in to (allocating
+// some account-specific state for) an application (see above for args desc.)
+func MakeApplicationOptInTx(
+	appIdx int64,
+	appArgs *BytesArray,
+	accounts *StringArray,
+	foreignApps *Int64Array,
+	foreignAssets *Int64Array,
+	params *SuggestedParams,
+	sender string,
+	note []byte,
+) (encoded []byte, err error) {
+	if appIdx < 0 {
+		err = errNegativeArgument
+		return
+	}
+
+	internalForeignApps := make([]uint64, foreignApps.Length())
+	for i := range internalForeignApps {
+		value := foreignApps.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignApps[i] = uint64(value)
+	}
+
+	internalForeignAssets := make([]uint64, foreignAssets.Length())
+	for i := range internalForeignAssets {
+		value := foreignAssets.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignAssets[i] = uint64(value)
+	}
+
+	internalParams, err := convertSuggestedParams(params)
+	if err != nil {
+		return
+	}
+
+	senderAddr, err := types.DecodeAddress(sender)
+	if err != nil {
+		err = fmt.Errorf("Could not decode sender address: %v", err)
+		return
+	}
+
+	tx, err := future.MakeApplicationOptInTx(uint64(appIdx), appArgs.Extract(), accounts.Extract(), internalForeignApps, internalForeignAssets, internalParams, senderAddr, note, types.Digest{}, [32]byte{}, types.Address{})
+	if err == nil {
+		encoded = msgpack.Encode(tx)
+	}
+
+	return
+}
+
+// MakeApplicationCloseOutTx makes a transaction for closing out of
+// (deallocating all account-specific state for) an application (see above for args desc.)
+func MakeApplicationCloseOutTx(
+	appIdx int64,
+	appArgs *BytesArray,
+	accounts *StringArray,
+	foreignApps *Int64Array,
+	foreignAssets *Int64Array,
+	params *SuggestedParams,
+	sender string,
+	note []byte,
+) (encoded []byte, err error) {
+	if appIdx < 0 {
+		err = errNegativeArgument
+		return
+	}
+
+	internalForeignApps := make([]uint64, foreignApps.Length())
+	for i := range internalForeignApps {
+		value := foreignApps.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignApps[i] = uint64(value)
+	}
+
+	internalForeignAssets := make([]uint64, foreignAssets.Length())
+	for i := range internalForeignAssets {
+		value := foreignAssets.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignAssets[i] = uint64(value)
+	}
+
+	internalParams, err := convertSuggestedParams(params)
+	if err != nil {
+		return
+	}
+
+	senderAddr, err := types.DecodeAddress(sender)
+	if err != nil {
+		err = fmt.Errorf("Could not decode sender address: %v", err)
+		return
+	}
+
+	tx, err := future.MakeApplicationCloseOutTx(uint64(appIdx), appArgs.Extract(), accounts.Extract(), internalForeignApps, internalForeignAssets, internalParams, senderAddr, note, types.Digest{}, [32]byte{}, types.Address{})
+	if err == nil {
+		encoded = msgpack.Encode(tx)
+	}
+
+	return
+}
+
+// MakeApplicationClearStateTx makes a transaction for clearing out all
+// account-specific state for an application. It may not be rejected by the
+// application's logic. (see above for args desc.)
+func MakeApplicationClearStateTx(
+	appIdx int64,
+	appArgs *BytesArray,
+	accounts *StringArray,
+	foreignApps *Int64Array,
+	foreignAssets *Int64Array,
+	params *SuggestedParams,
+	sender string,
+	note []byte,
+) (encoded []byte, err error) {
+	if appIdx < 0 {
+		err = errNegativeArgument
+		return
+	}
+
+	internalForeignApps := make([]uint64, foreignApps.Length())
+	for i := range internalForeignApps {
+		value := foreignApps.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignApps[i] = uint64(value)
+	}
+
+	internalForeignAssets := make([]uint64, foreignAssets.Length())
+	for i := range internalForeignAssets {
+		value := foreignAssets.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignAssets[i] = uint64(value)
+	}
+
+	internalParams, err := convertSuggestedParams(params)
+	if err != nil {
+		return
+	}
+
+	senderAddr, err := types.DecodeAddress(sender)
+	if err != nil {
+		err = fmt.Errorf("Could not decode sender address: %v", err)
+		return
+	}
+
+	tx, err := future.MakeApplicationClearStateTx(uint64(appIdx), appArgs.Extract(), accounts.Extract(), internalForeignApps, internalForeignAssets, internalParams, senderAddr, note, types.Digest{}, [32]byte{}, types.Address{})
+	if err == nil {
+		encoded = msgpack.Encode(tx)
+	}
+
+	return
+}
+
+// MakeApplicationNoOpTx makes a transaction for interacting with an existing
+// application, potentially updating any account-specific local state and
+// global state associated with it. (see above for args desc.)
+func MakeApplicationNoOpTx(
+	appIdx int64,
+	appArgs *BytesArray,
+	accounts *StringArray,
+	foreignApps *Int64Array,
+	foreignAssets *Int64Array,
+	params *SuggestedParams,
+	sender string,
+	note []byte,
+) (encoded []byte, err error) {
+	if appIdx < 0 {
+		err = errNegativeArgument
+		return
+	}
+
+	internalForeignApps := make([]uint64, foreignApps.Length())
+	for i := range internalForeignApps {
+		value := foreignApps.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignApps[i] = uint64(value)
+	}
+
+	internalForeignAssets := make([]uint64, foreignAssets.Length())
+	for i := range internalForeignAssets {
+		value := foreignAssets.Get(i)
+		if value < 0 {
+			err = errNegativeArgument
+			return
+		}
+		internalForeignAssets[i] = uint64(value)
+	}
+
+	internalParams, err := convertSuggestedParams(params)
+	if err != nil {
+		return
+	}
+
+	senderAddr, err := types.DecodeAddress(sender)
+	if err != nil {
+		err = fmt.Errorf("Could not decode sender address: %v", err)
+		return
+	}
+
+	tx, err := future.MakeApplicationNoOpTx(uint64(appIdx), appArgs.Extract(), accounts.Extract(), internalForeignApps, internalForeignAssets, internalParams, senderAddr, note, types.Digest{}, [32]byte{}, types.Address{})
+	if err == nil {
+		encoded = msgpack.Encode(tx)
+	}
+
+	return
+}

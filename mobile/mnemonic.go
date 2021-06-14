@@ -1,6 +1,8 @@
 package mobile
 
 import (
+	"fmt"
+
 	"github.com/algorand/go-algorand-sdk/mnemonic"
 	"github.com/algorand/go-algorand-sdk/types"
 	"golang.org/x/crypto/ed25519"
@@ -39,8 +41,13 @@ func MnemonicToPrivateKey(mnemonicStr string) (sk []byte, err error) {
 
 // MnemonicFromMasterDerivationKey is a helper that converts an MDK to a
 // human-readable mnemonic
-func MnemonicFromMasterDerivationKey(mdk types.MasterDerivationKey) (string, error) {
-	return mnemonic.FromMasterDerivationKey(mdk)
+func MnemonicFromMasterDerivationKey(mdk []byte) (string, error) {
+	var mdkType types.MasterDerivationKey
+	if len(mdk) != len(mdkType) {
+		return "", fmt.Errorf("Wrong length for master derivation key. Expected %d, got %d", len(mdkType), len(mdk))
+	}
+	copy(mdkType[:], mdk)
+	return mnemonic.FromMasterDerivationKey(mdkType)
 }
 
 // MnemonicToMasterDerivationKey is a helper that converts a mnemonic directly

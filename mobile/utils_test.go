@@ -1,12 +1,39 @@
 package mobile
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 
 	"github.com/algorand/go-algorand-sdk/types"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUint64(t *testing.T) {
+	tests := []uint64{
+		0,
+		1,
+		math.MaxUint32,
+		math.MaxUint32 + 1,
+		math.MaxUint64,
+	}
+
+	for _, test := range tests {
+		t.Run(fmt.Sprint(test), func(t *testing.T) {
+			value := MakeUint64(test)
+
+			extracted, err := value.Extract()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if test != extracted {
+				t.Errorf("Wrong exacted value. Expected %d, got %d", test, extracted)
+			}
+		})
+	}
+}
 
 func randomBytes(s []byte) {
 	_, err := rand.Read(s)

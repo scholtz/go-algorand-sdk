@@ -27,19 +27,95 @@ func MakeUint64(value uint64) Uint64 {
 }
 
 func (i Uint64) Extract() (value uint64, err error) {
-	if i.Upper < 0 || i.Upper > math.MaxUint32 {
-		err = fmt.Errorf("Upper value of Uint64 not in correct range. Expected value between 0 and %d, got %d", math.MaxUint32, i.Upper)
+	if i.Upper < 0 || i.Upper > int64(math.MaxUint32) {
+		err = fmt.Errorf("Upper value of Uint64 not in correct range. Expected value between 0 and %d, got %d", int64(math.MaxUint32), i.Upper)
 		return
 	}
 
-	if i.Lower < 0 || i.Lower > math.MaxUint32 {
-		err = fmt.Errorf("Lower value of Uint64 not in correct range. Expected value between 0 and %d, got %d", math.MaxUint32, i.Lower)
+	if i.Lower < 0 || i.Lower > int64(math.MaxUint32) {
+		err = fmt.Errorf("Lower value of Uint64 not in correct range. Expected value between 0 and %d, got %d", int64(math.MaxUint32), i.Lower)
 		return
 	}
 
 	value = uint64(i.Upper)<<32 | uint64(i.Lower)
 
 	return
+}
+
+type StringArray struct {
+	values []string
+}
+
+func (sa *StringArray) Length() int {
+	return len(sa.values)
+}
+
+func (sa *StringArray) Append(value string) {
+	sa.values = append(sa.values, string([]byte(value))) // deep copy the string
+}
+
+func (sa *StringArray) Get(index int) string {
+	return sa.values[index]
+}
+
+func (sa *StringArray) Set(index int, value string) {
+	sa.values[index] = string([]byte(value)) // deep copy the string
+}
+
+func (sa *StringArray) Extract() []string {
+	return sa.values[:]
+}
+
+type BytesArray struct {
+	values [][]byte
+}
+
+func (ba *BytesArray) Length() int {
+	return len(ba.values)
+}
+
+func (ba *BytesArray) Append(value []byte) {
+	cp := make([]byte, len(value))
+	copy(cp, value)
+	ba.values = append(ba.values, cp)
+}
+
+func (ba *BytesArray) Get(index int) []byte {
+	return ba.values[index]
+}
+
+func (ba *BytesArray) Set(index int, value []byte) {
+	cp := make([]byte, len(value))
+	copy(cp, value)
+	ba.values[index] = cp
+}
+
+func (ba *BytesArray) Extract() [][]byte {
+	return ba.values[:]
+}
+
+type Int64Array struct {
+	values []int64
+}
+
+func (ia *Int64Array) Length() int {
+	return len(ia.values)
+}
+
+func (ia *Int64Array) Append(value int64) {
+	ia.values = append(ia.values, value)
+}
+
+func (ia *Int64Array) Get(index int) int64 {
+	return ia.values[index]
+}
+
+func (ia *Int64Array) Set(index int, value int64) {
+	ia.values[index] = value
+}
+
+func (ia *Int64Array) Extract() []int64 {
+	return ia.values[:]
 }
 
 func IsValidAddress(addr string) bool {

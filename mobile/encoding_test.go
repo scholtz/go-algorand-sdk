@@ -11,16 +11,16 @@ import (
 
 // checks json strings for equality
 // inspired by https://gist.github.com/turtlemonvh/e4f7404e28387fadb8ad275a99596f67
-func jsonEqual(s1, s2 []byte) (bool, error) {
+func jsonEqual(s1, s2 string) (bool, error) {
 	var o1 interface{}
 	var o2 interface{}
 
 	var err error
-	err = json.Unmarshal(s1, &o1)
+	err = json.Unmarshal([]byte(s1), &o1)
 	if err != nil {
 		return false, fmt.Errorf("Error mashalling string 1 :: %s", err.Error())
 	}
-	err = json.Unmarshal(s2, &o2)
+	err = json.Unmarshal([]byte(s2), &o2)
 	if err != nil {
 		return false, fmt.Errorf("Error mashalling string 2 :: %s", err.Error())
 	}
@@ -61,7 +61,7 @@ func TestTransaction(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		expectedJson := []byte(test.json)
+		expectedJson := test.json
 		expectedMsgpack, err := base64.StdEncoding.DecodeString(test.msgpack)
 		if err != nil {
 			t.Fatal(err)
@@ -76,7 +76,7 @@ func TestTransaction(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		} else if !areJsonEqual {
-			t.Errorf("Expected JSON does not match actual JSON.\nExpected:\n%s\n\nActual:\n%s", string(expectedJson), string(actualJson))
+			t.Errorf("Expected JSON does not match actual JSON.\nExpected:\n%s\n\nActual:\n%s", expectedJson, actualJson)
 		}
 
 		actualMsgpack, err := TransactionJsonToMsgpack(expectedJson)
@@ -86,7 +86,7 @@ func TestTransaction(t *testing.T) {
 
 		if !bytes.Equal(expectedMsgpack, actualMsgpack) {
 			b64Expected := base64.StdEncoding.EncodeToString(expectedMsgpack)
-			b64Actual := base64.StdEncoding.EncodeToString(actualJson)
+			b64Actual := base64.StdEncoding.EncodeToString(actualMsgpack)
 			t.Errorf("Expected msgpack does not match actual msgpack.\nExpected:\n%s\n\nActual:\n%s", b64Expected, b64Actual)
 		}
 	}
