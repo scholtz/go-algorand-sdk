@@ -7,6 +7,7 @@ import (
 
 	"github.com/algorand/go-algorand-sdk/crypto"
 	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
+	"github.com/algorand/go-algorand-sdk/transaction"
 	"github.com/algorand/go-algorand-sdk/types"
 )
 
@@ -147,4 +148,76 @@ func GetTxID(encodedTxn []byte) string {
 	}
 
 	return crypto.TransactionIDString(tx)
+}
+
+// AssignGroupID computes and return list of encoded transactions with Group field set.
+func AssignGroupID(txns *BytesArray) (assignedTxns *BytesArray, err error) {
+	txgroup := make([]types.Transaction, txns.Length())
+	for i, encodedTxn := range txns.Extract() {
+		err = msgpack.Decode(encodedTxn, &txgroup[i])
+		if err != nil {
+			err = fmt.Errorf("Could not decode transaction at index %d: %v", i, err)
+			return
+		}
+	}
+
+	txgroup, err = transaction.AssignGroupID(txgroup, "")
+	if err == nil {
+		assignedTxns = &BytesArray{
+			values: make([][]byte, len(txgroup)),
+		}
+
+		for i := range txgroup {
+			assignedTxns.values[i] = msgpack.Encode(&txgroup[i])
+		}
+	}
+
+	return
+}
+
+// VerifyGroupID verifies that a group of transactions all contain the correct group ID
+func VerifyGroupID(txns *BytesArray) (valid bool, err error) {
+	if txns.Length() == 0 {
+		err = fmt.Errorf("Input transaction group has 0 elements")
+		return
+	}
+
+	txgroup := make([]types.Transaction, txns.Length())
+	for i, encodedTxn := range txns.Extract() {
+		err = msgpack.Decode(encodedTxn, &txgroup[i])
+		if err != nil {
+			err = fmt.Errorf("Could not decode transaction at index %d: %v", i, err)
+			return
+		}
+	}
+
+	emptyGroup := types.Digest{}
+
+	// a group of size 1 may have an empty group ID
+	if len(txgroup) == 1 && txgroup[0].Group == emptyGroup {
+		valid = true
+		return
+	}
+
+	var inputGroup types.Digest
+	for i := range txgroup {
+		if i == 0 {
+			inputGroup = txgroup[i].Group
+		} else {
+			// ensure all txns in the input have the same group ID
+			if txgroup[i].Group != inputGroup {
+				valid = false
+				return
+			}
+		}
+		// zero out group IDs so we can compute it again
+		txgroup[i].Group = emptyGroup
+	}
+
+	gid, err := crypto.ComputeGroupID(txgroup)
+	if err == nil {
+		valid = gid == inputGroup
+	}
+
+	return
 }
