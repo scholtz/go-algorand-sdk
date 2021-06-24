@@ -30,7 +30,7 @@ func MnemonicFromPrivateKey(sk []byte) (string, error) {
 		return "", errWrongKeyLen
 	}
 	sk1 := ed25519.PrivateKey(sk)
-	return mnemonic.FromKey(sk1)
+	return mnemonic.FromPrivateKey(sk1)
 }
 
 // MnemonicToPrivateKey is a helper that converts a mnemonic directly to an
