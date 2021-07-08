@@ -175,20 +175,23 @@ func AssignGroupID(txns *BytesArray) (assignedTxns *BytesArray, err error) {
 	return
 }
 
-// VerifyGroupID verifies that a group of transactions all contain the correct group ID
-func VerifyGroupID(txns *BytesArray) (valid bool, err error) {
-	if txns.Length() == 0 {
-		err = fmt.Errorf("Input transaction group has 0 elements")
-		return
-	}
-
-	txgroup := make([]types.Transaction, txns.Length())
+func decodeTxns(txns *BytesArray) (decoded []types.Transaction, err error) {
+	decoded = make([]types.Transaction, txns.Length())
 	for i, encodedTxn := range txns.Extract() {
-		err = msgpack.Decode(encodedTxn, &txgroup[i])
+		err = msgpack.Decode(encodedTxn, &decoded[i])
 		if err != nil {
 			err = fmt.Errorf("Could not decode transaction at index %d: %v", i, err)
 			return
 		}
+	}
+
+	return
+}
+
+func verifyTxnsGroupID(txgroup []types.Transaction) (valid bool, err error) {
+	if len(txgroup) == 0 {
+		err = fmt.Errorf("Input transaction group has 0 elements")
+		return
 	}
 
 	emptyGroup := types.Digest{}
@@ -217,6 +220,84 @@ func VerifyGroupID(txns *BytesArray) (valid bool, err error) {
 	gid, err := crypto.ComputeGroupID(txgroup)
 	if err == nil {
 		valid = gid == inputGroup
+	}
+
+	return
+}
+
+// VerifyGroupID verifies that an atomic group of transactions all contain the correct group ID
+func VerifyGroupID(txns *BytesArray) (valid bool, err error) {
+	txgroup, err := decodeTxns(txns)
+	if err == nil {
+		valid, err = verifyTxnsGroupID(txgroup)
+	}
+	return
+}
+
+// FindAndVerifyTxnGroups takes an array of encoded transactions and finds and verifies consecutive
+// transactions which claim to be an atomic group. It returns an array of integers which is the same
+// length as the array of input transactions. If two indexes in this array have the same value, then
+// the transactions at the same indexes in the input array are in the same atomic group.
+func FindAndVerifyTxnGroups(txns *BytesArray) (groups *Int64Array, err error) {
+	allTxns, err := decodeTxns(txns)
+	if err != nil {
+		return
+	}
+
+	if len(allTxns) == 0 {
+		err = fmt.Errorf("Input transaction group has 0 elements")
+		return
+	}
+
+	groupAssignment := make([]int64, len(allTxns))
+	var groupStarts []int
+
+	emptyGroup := types.Digest{}
+	prevGroup := types.Digest{}
+
+	// find groups
+	var groupCount int64
+	for i, txn := range allTxns {
+		if txn.Group != prevGroup || txn.Group == emptyGroup {
+			groupCount++
+			groupStarts = append(groupStarts, i)
+		}
+
+		groupAssignment[i] = groupCount - 1
+
+		prevGroup = txn.Group
+	}
+
+	// verify groups
+	for i, indexGroupStart := range groupStarts {
+		var indexGroupEnd int
+		if i+1 < len(groupStarts) {
+			indexGroupEnd = groupStarts[i+1]
+		} else {
+			indexGroupEnd = len(allTxns)
+		}
+
+		group := allTxns[indexGroupStart:indexGroupEnd]
+		if len(group) == 0 {
+			err = fmt.Errorf("Zero length group error")
+			return
+		}
+
+		var valid bool
+		valid, err = verifyTxnsGroupID(group)
+		if err != nil {
+			err = fmt.Errorf("Error when verifying group: %v", err)
+			return
+		}
+
+		if !valid {
+			err = fmt.Errorf("The transactions in range [%d:%d] form an invalid group", indexGroupStart, indexGroupEnd)
+			return
+		}
+	}
+
+	groups = &Int64Array{
+		values: groupAssignment,
 	}
 
 	return
