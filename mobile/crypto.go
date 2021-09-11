@@ -150,6 +150,11 @@ func GetTxID(encodedTxn []byte) string {
 	return crypto.TransactionIDString(tx)
 }
 
+// GetProgramAddress returns the escrow account address for a program, derived from its TEAL bytecode.
+func AddressFromProgram(program []byte) string {
+	return crypto.AddressFromProgram(program).String()
+}
+
 // AssignGroupID computes and return list of encoded transactions with Group field set.
 func AssignGroupID(txns *BytesArray) (assignedTxns *BytesArray, err error) {
 	txgroup := make([]types.Transaction, txns.Length())

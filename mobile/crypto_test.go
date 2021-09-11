@@ -38,6 +38,45 @@ func TestKeyGeneration(t *testing.T) {
 	require.Equal(t, pk, ed25519.PublicKey(decoded[:]))
 }
 
+func TestAddressFromProgram(t *testing.T) {
+	mustDecodeB64 := func(b64 string) []byte {
+		decoded, err := base64.StdEncoding.DecodeString(b64)
+		require.NoError(t, err)
+		return decoded
+	}
+
+	mustDecodeAddress := func(addr string) types.Address {
+		decoded, err := types.DecodeAddress(addr)
+		require.NoError(t, err)
+		return decoded
+	}
+
+	tests := []struct {
+		program []byte
+		address types.Address
+	}{
+		{
+			program: mustDecodeB64("BIEBQw=="),
+			address: mustDecodeAddress("5QWQ3DPBFLTOT64LVXBRL2SDL7ESJD2WTRURRGXK5GHPIOOJQCENC3AOUA"),
+		},
+		{
+			program: mustDecodeB64("BYEB"),
+			address: mustDecodeAddress("LDVQXDDKSFHPAEEZA2HES6V5GGHT4LZJAGJBBTZT7CA2VOKSZ6CTV3XIA4"),
+		},
+		{
+			program: mustDecodeB64("BCADAQAGMRkjEkAAJDEZIhIxGYECEhFAABUxGYEEEjEZgQUSEUAAAQAxADIJEkMjQ4AYaXRlcmF0aXZlIGZhY3RvcmlhbCBvZiA2JIgAImeAGHJlY3Vyc2l2ZSBmYWN0b3JpYWwgb2YgNiSIACZnIkM1ACI1AiI1ATQBNAAOQQAQNAI0AQs1AjQBIgg1AUL/6DQCiTUDNAMiDkEAAiKJNAM0AyIJNANLAYj/6Ew1A0xIC4k="),
+			address: mustDecodeAddress("2GUVNOLUIEM6WT5W67OE23IE3CCDKDTCT4H2A66PFTBCCWHRCDUZPLEHLE"),
+		},
+	}
+
+	for testIndex, test := range tests {
+		t.Run(fmt.Sprintf("index=%d", testIndex), func(t *testing.T) {
+			actual := AddressFromProgram(test.program)
+			require.Equal(t, test.address, mustDecodeAddress(actual))
+		})
+	}
+}
+
 func TestAssignGroupID(t *testing.T) {
 	type assignGroupIDTest struct {
 		b64Txns            []string
