@@ -26,4 +26,4 @@ android:
 	gomobile bind -target=android -o=algosdk.aar -javapkg=com.algorand.algosdk github.com/algorand/go-algorand-sdk/mobile
 
 ios:
-	gomobile bind -target=ios -o=AlgoSDK.framework -prefix=Algo github.com/algorand/go-algorand-sdk/mobile
+	gomobile bind -target=ios -o=AlgoSDK.xcframework -prefix=Algo github.com/algorand/go-algorand-sdk/mobile
