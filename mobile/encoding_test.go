@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 // checks json strings for equality
@@ -58,36 +60,142 @@ func TestTransaction(t *testing.T) {
 				"type": "acfg"
 			  }`,
 		},
+		{
+			msgpack: "i6RhcGFhkcQEdGVzdKRhcGF0ksQgACoyATtqMON+4ohUJO59fQVV6uCTn7aa/GvfndL+5/7EIAAHBAuPYqMysOAF8ALIwKUWNGgBCjFYJ8bPUnx4aXnnpGFwYniSgaFuxAVhbGljZYKhaQKhbsQDYm9ipGFwZmGSzRWzzRoKpGFwaWRko2ZlZc0E0qJmds0jKKJnaMQgMf0h6zjkEIEZPtNM3zsrg+iHQFS0fZxhgr7w35I464OibHbNIzKjc25kxCAJ+9J2LAj4bFrmv23Xp6kB3mZ111Dgfoxcdphkfbbh/aR0eXBlpGFwcGw=",
+			json: `{
+				"apaa": [
+				  "dGVzdA=="
+				],
+				"apat": [
+				  "ACoyATtqMON+4ohUJO59fQVV6uCTn7aa/GvfndL+5/4=",
+				  "AAcEC49iozKw4AXwAsjApRY0aAEKMVgnxs9SfHhpeec="
+				],
+				"apbx": [
+				  {
+					"n": "YWxpY2U="
+				  },
+				  {
+					"i": 2,
+					"n": "Ym9i"
+				  }
+				],
+				"apfa": [
+				  5555,
+				  6666
+				],
+				"apid": 100,
+				"fee": 1234,
+				"fv": 9000,
+				"gh": "Mf0h6zjkEIEZPtNM3zsrg+iHQFS0fZxhgr7w35I464M=",
+				"lv": 9010,
+				"snd": "CfvSdiwI+Gxa5r9t16epAd5mdddQ4H6MXHaYZH224f0=",
+				"type": "appl"
+			  }`,
+		},
+		{
+			msgpack: "i6RhcGFhkcQEdGVzdKRhcGF0ksQgACoyATtqMON+4ohUJO59fQVV6uCTn7aa/GvfndL+5/7EIAAHBAuPYqMysOAF8ALIwKUWNGgBCjFYJ8bPUnx4aXnnpGFwYniSgaFuxAdjaGFybGllgqFpAaFuxANkb2ekYXBmYZJkzRoKpGFwaWRko2ZlZc0E0qJmds0jKKJnaMQgMf0h6zjkEIEZPtNM3zsrg+iHQFS0fZxhgr7w35I464OibHbNIzKjc25kxCAJ+9J2LAj4bFrmv23Xp6kB3mZ111Dgfoxcdphkfbbh/aR0eXBlpGFwcGw=",
+			json: `{
+				"apaa": [
+				  "dGVzdA=="
+				],
+				"apat": [
+				  "ACoyATtqMON+4ohUJO59fQVV6uCTn7aa/GvfndL+5/4=",
+				  "AAcEC49iozKw4AXwAsjApRY0aAEKMVgnxs9SfHhpeec="
+				],
+				"apbx": [
+				  {
+					"n": "Y2hhcmxpZQ=="
+				  },
+				  {
+					"i": 1,
+					"n": "ZG9n"
+				  }
+				],
+				"apfa": [
+				  100,
+				  6666
+				],
+				"apid": 100,
+				"fee": 1234,
+				"fv": 9000,
+				"gh": "Mf0h6zjkEIEZPtNM3zsrg+iHQFS0fZxhgr7w35I464M=",
+				"lv": 9010,
+				"snd": "CfvSdiwI+Gxa5r9t16epAd5mdddQ4H6MXHaYZH224f0=",
+				"type": "appl"
+			  }`,
+		},
+		{
+			msgpack: "i6RhcGFhkcQEdGVzdKRhcGF0ksQgACoyATtqMON+4ohUJO59fQVV6uCTn7aa/GvfndL+5/7EIAAHBAuPYqMysOAF8ALIwKUWNGgBCjFYJ8bPUnx4aXnnpGFwYniSgaFuxAKM/4GhbsQCAACkYXBmYZJkzRoKpGFwaWRko2ZlZc0E0qJmds0jKKJnaMQgMf0h6zjkEIEZPtNM3zsrg+iHQFS0fZxhgr7w35I464OibHbNIzKjc25kxCAJ+9J2LAj4bFrmv23Xp6kB3mZ111Dgfoxcdphkfbbh/aR0eXBlpGFwcGw=",
+			json: `{
+				"apaa": [
+				  "dGVzdA=="
+				],
+				"apat": [
+				  "ACoyATtqMON+4ohUJO59fQVV6uCTn7aa/GvfndL+5/4=",
+				  "AAcEC49iozKw4AXwAsjApRY0aAEKMVgnxs9SfHhpeec="
+				],
+				"apbx": [
+				  {
+					"n": "jP8="
+				  },
+				  {
+					"n": "AAA="
+				  }
+				],
+				"apfa": [
+				  100,
+				  6666
+				],
+				"apid": 100,
+				"fee": 1234,
+				"fv": 9000,
+				"gh": "Mf0h6zjkEIEZPtNM3zsrg+iHQFS0fZxhgr7w35I464M=",
+				"lv": 9010,
+				"snd": "CfvSdiwI+Gxa5r9t16epAd5mdddQ4H6MXHaYZH224f0=",
+				"type": "appl"
+			  }`,
+		},
+		{
+			msgpack: "iaRhcGFhkcQEdGVzdKRhcGJ4kYCkYXBpZGSjZmVlzQTSomZ2zSMoomdoxCAx/SHrOOQQgRk+00zfOyuD6IdAVLR9nGGCvvDfkjjrg6Jsds0jMqNzbmTEIAn70nYsCPhsWua/bdenqQHeZnXXUOB+jFx2mGR9tuH9pHR5cGWkYXBwbA==",
+			json: `{
+				"apaa": [
+				  "dGVzdA=="
+				],
+				"apbx": [
+				  {}
+				],
+				"apid": 100,
+				"fee": 1234,
+				"fv": 9000,
+				"gh": "Mf0h6zjkEIEZPtNM3zsrg+iHQFS0fZxhgr7w35I464M=",
+				"lv": 9010,
+				"snd": "CfvSdiwI+Gxa5r9t16epAd5mdddQ4H6MXHaYZH224f0=",
+				"type": "appl"
+			  }`,
+		},
 	}
 
-	for _, test := range tests {
-		expectedJson := test.json
-		expectedMsgpack, err := base64.StdEncoding.DecodeString(test.msgpack)
-		if err != nil {
-			t.Fatal(err)
-		}
+	for i, test := range tests {
+		t.Run(fmt.Sprintf("i=%d", i), func(t *testing.T) {
+			expectedJson := test.json
+			expectedMsgpack, err := base64.StdEncoding.DecodeString(test.msgpack)
+			require.NoError(t, err)
 
-		actualJson, err := TransactionMsgpackToJson(expectedMsgpack)
-		if err != nil {
-			t.Errorf("Could not convert transaction from msgpack to JSON: %v", err)
-		}
+			actualJson, err := TransactionMsgpackToJson(expectedMsgpack)
+			require.NoError(t, err, "Could not convert transaction from msgpack to JSON")
 
-		areJsonEqual, err := jsonEqual(expectedJson, actualJson)
-		if err != nil {
-			t.Error(err)
-		} else if !areJsonEqual {
-			t.Errorf("Expected JSON does not match actual JSON.\nExpected:\n%s\n\nActual:\n%s", expectedJson, actualJson)
-		}
+			areJsonEqual, err := jsonEqual(expectedJson, actualJson)
+			require.NoError(t, err)
+			require.Truef(t, areJsonEqual, "Expected JSON does not match actual JSON.\nExpected:\n%s\n\nActual:\n%s", expectedJson, actualJson)
 
-		actualMsgpack, err := TransactionJsonToMsgpack(expectedJson)
-		if err != nil {
-			t.Errorf("Could not convert transaction from JSON to msgpack: %v", err)
-		}
+			actualMsgpack, err := TransactionJsonToMsgpack(expectedJson)
+			require.NoError(t, err, "Could not convert transaction from JSON to msgpack")
 
-		if !bytes.Equal(expectedMsgpack, actualMsgpack) {
-			b64Expected := base64.StdEncoding.EncodeToString(expectedMsgpack)
-			b64Actual := base64.StdEncoding.EncodeToString(actualMsgpack)
-			t.Errorf("Expected msgpack does not match actual msgpack.\nExpected:\n%s\n\nActual:\n%s", b64Expected, b64Actual)
-		}
+			if !bytes.Equal(expectedMsgpack, actualMsgpack) {
+				b64Expected := base64.StdEncoding.EncodeToString(expectedMsgpack)
+				b64Actual := base64.StdEncoding.EncodeToString(actualMsgpack)
+				require.Failf(t, "Expected msgpack does not match actual msgpack.\nExpected:\n%s\n\nActual:\n%s", b64Expected, b64Actual)
+			}
+		})
 	}
 }

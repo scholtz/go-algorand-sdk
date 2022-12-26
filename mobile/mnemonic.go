@@ -3,8 +3,8 @@ package mobile
 import (
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/mnemonic"
-	"github.com/algorand/go-algorand-sdk/types"
+	"github.com/algorand/go-algorand-sdk/v2/mnemonic"
+	"github.com/algorand/go-algorand-sdk/v2/types"
 	"golang.org/x/crypto/ed25519"
 )
 

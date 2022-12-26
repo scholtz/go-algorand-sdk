@@ -3,8 +3,8 @@ package mobile
 import (
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/auction"
-	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
+	"github.com/algorand/go-algorand-sdk/v2/auction"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/msgpack"
 )
 
 func MakeBid(bidderAddress string, bidAmount, maxPrice, bidID int64, auctionAddress string, auctionID int64) (encodedBid []byte, err error) {

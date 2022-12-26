@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
-	"github.com/algorand/go-algorand-sdk/types"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/msgpack"
+	"github.com/algorand/go-algorand-sdk/v2/types"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/ed25519"
 )
