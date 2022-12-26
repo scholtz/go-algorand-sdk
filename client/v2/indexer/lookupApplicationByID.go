@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // LookupApplicationByIDParams contains all of the query parameters for url serialization.
@@ -31,11 +31,12 @@ type LookupApplicationByID struct {
 // localstates.
 func (s *LookupApplicationByID) IncludeAll(IncludeAll bool) *LookupApplicationByID {
 	s.p.IncludeAll = IncludeAll
+
 	return s
 }
 
 // Do performs the HTTP request
 func (s *LookupApplicationByID) Do(ctx context.Context, headers ...*common.Header) (response models.ApplicationResponse, err error) {
-	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/applications/%v", s.applicationId), s.p, headers)
+	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/applications/%s", common.EscapeParams(s.applicationId)...), s.p, headers)
 	return
 }

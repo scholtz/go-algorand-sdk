@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // LookupAssetTransactionsParams contains all of the query parameters for url serialization.
@@ -44,7 +44,8 @@ type LookupAssetTransactionsParams struct {
 	// receiver, if you would like to exclude them set this parameter to true.
 	ExcludeCloseTo bool `url:"exclude-close-to,omitempty"`
 
-	// Limit maximum number of results to return.
+	// Limit maximum number of results to return. There could be additional pages even
+	// if the limit is not reached.
 	Limit uint64 `url:"limit,omitempty"`
 
 	// MaxRound include results at or before the specified max-round.
@@ -79,7 +80,8 @@ type LookupAssetTransactionsParams struct {
 	TXID string `url:"txid,omitempty"`
 }
 
-// LookupAssetTransactions lookup transactions for an asset.
+// LookupAssetTransactions lookup transactions for an asset. Transactions are
+// returned oldest to newest.
 type LookupAssetTransactions struct {
 	c *Client
 
@@ -92,6 +94,7 @@ type LookupAssetTransactions struct {
 // transaction fields.
 func (s *LookupAssetTransactions) AddressString(AddressString string) *LookupAssetTransactions {
 	s.p.AddressString = AddressString
+
 	return s
 }
 
@@ -99,6 +102,7 @@ func (s *LookupAssetTransactions) AddressString(AddressString string) *LookupAss
 // search for.
 func (s *LookupAssetTransactions) AddressRole(AddressRole string) *LookupAssetTransactions {
 	s.p.AddressRole = AddressRole
+
 	return s
 }
 
@@ -106,6 +110,7 @@ func (s *LookupAssetTransactions) AddressRole(AddressRole string) *LookupAssetTr
 // formatted string.
 func (s *LookupAssetTransactions) AfterTimeString(AfterTime string) *LookupAssetTransactions {
 	s.p.AfterTime = AfterTime
+
 	return s
 }
 
@@ -121,6 +126,7 @@ func (s *LookupAssetTransactions) AfterTime(AfterTime time.Time) *LookupAssetTra
 // formatted string.
 func (s *LookupAssetTransactions) BeforeTimeString(BeforeTime string) *LookupAssetTransactions {
 	s.p.BeforeTime = BeforeTime
+
 	return s
 }
 
@@ -137,6 +143,7 @@ func (s *LookupAssetTransactions) BeforeTime(BeforeTime time.Time) *LookupAssetT
 // case the asset will be used.
 func (s *LookupAssetTransactions) CurrencyGreaterThan(CurrencyGreaterThan uint64) *LookupAssetTransactions {
 	s.p.CurrencyGreaterThan = CurrencyGreaterThan
+
 	return s
 }
 
@@ -145,6 +152,7 @@ func (s *LookupAssetTransactions) CurrencyGreaterThan(CurrencyGreaterThan uint64
 // will be used.
 func (s *LookupAssetTransactions) CurrencyLessThan(CurrencyLessThan uint64) *LookupAssetTransactions {
 	s.p.CurrencyLessThan = CurrencyLessThan
+
 	return s
 }
 
@@ -153,24 +161,29 @@ func (s *LookupAssetTransactions) CurrencyLessThan(CurrencyLessThan uint64) *Loo
 // receiver, if you would like to exclude them set this parameter to true.
 func (s *LookupAssetTransactions) ExcludeCloseTo(ExcludeCloseTo bool) *LookupAssetTransactions {
 	s.p.ExcludeCloseTo = ExcludeCloseTo
+
 	return s
 }
 
-// Limit maximum number of results to return.
+// Limit maximum number of results to return. There could be additional pages even
+// if the limit is not reached.
 func (s *LookupAssetTransactions) Limit(Limit uint64) *LookupAssetTransactions {
 	s.p.Limit = Limit
+
 	return s
 }
 
 // MaxRound include results at or before the specified max-round.
 func (s *LookupAssetTransactions) MaxRound(MaxRound uint64) *LookupAssetTransactions {
 	s.p.MaxRound = MaxRound
+
 	return s
 }
 
 // MinRound include results at or after the specified min-round.
 func (s *LookupAssetTransactions) MinRound(MinRound uint64) *LookupAssetTransactions {
 	s.p.MinRound = MinRound
+
 	return s
 }
 
@@ -178,6 +191,7 @@ func (s *LookupAssetTransactions) MinRound(MinRound uint64) *LookupAssetTransact
 // results.
 func (s *LookupAssetTransactions) NextToken(NextToken string) *LookupAssetTransactions {
 	s.p.NextToken = NextToken
+
 	return s
 }
 
@@ -191,12 +205,14 @@ func (s *LookupAssetTransactions) NotePrefix(NotePrefix []byte) *LookupAssetTran
 // RekeyTo include results which include the rekey-to field.
 func (s *LookupAssetTransactions) RekeyTo(RekeyTo bool) *LookupAssetTransactions {
 	s.p.RekeyTo = RekeyTo
+
 	return s
 }
 
 // Round include results for the specified round.
 func (s *LookupAssetTransactions) Round(Round uint64) *LookupAssetTransactions {
 	s.p.Round = Round
+
 	return s
 }
 
@@ -206,23 +222,26 @@ func (s *LookupAssetTransactions) Round(Round uint64) *LookupAssetTransactions {
 // * lsig - LogicSig
 func (s *LookupAssetTransactions) SigType(SigType string) *LookupAssetTransactions {
 	s.p.SigType = SigType
+
 	return s
 }
 
 // TxType
 func (s *LookupAssetTransactions) TxType(TxType string) *LookupAssetTransactions {
 	s.p.TxType = TxType
+
 	return s
 }
 
 // TXID lookup the specific transaction by ID.
 func (s *LookupAssetTransactions) TXID(TXID string) *LookupAssetTransactions {
 	s.p.TXID = TXID
+
 	return s
 }
 
 // Do performs the HTTP request
 func (s *LookupAssetTransactions) Do(ctx context.Context, headers ...*common.Header) (response models.TransactionsResponse, err error) {
-	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/assets/%v/transactions", s.assetId), s.p, headers)
+	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/assets/%s/transactions", common.EscapeParams(s.assetId)...), s.p, headers)
 	return
 }

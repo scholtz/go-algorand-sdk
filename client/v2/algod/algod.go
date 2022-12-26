@@ -3,13 +3,18 @@ package algod
 import (
 	"context"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 const authHeader = "X-Algo-API-Token"
 
 type Client common.Client
+
+// delete performs a DELETE request to the specific path against the server, assumes JSON response
+func (c *Client) delete(ctx context.Context, response interface{}, path string, body interface{}, headers []*common.Header) error {
+	return (*common.Client)(c).Delete(ctx, response, path, body, headers)
+}
 
 // get performs a GET request to the specific path against the server, assumes JSON response
 func (c *Client) get(ctx context.Context, response interface{}, path string, body interface{}, headers []*common.Header) error {
@@ -29,8 +34,8 @@ func (c *Client) getRaw(ctx context.Context, path string, body interface{}, head
 // post sends a POST request to the given path with the given request object.
 // No query parameters will be sent if request is nil.
 // response must be a pointer to an object as post writes the response there.
-func (c *Client) post(ctx context.Context, response interface{}, path string, body interface{}, headers []*common.Header) error {
-	return (*common.Client)(c).Post(ctx, response, path, body, headers)
+func (c *Client) post(ctx context.Context, response interface{}, path string, params interface{}, headers []*common.Header, body interface{}) error {
+	return (*common.Client)(c).Post(ctx, response, path, params, headers, body)
 }
 
 // MakeClient is the factory for constructing a ClientV2 for a given endpoint.
@@ -64,6 +69,14 @@ func (c *Client) AccountInformation(address string) *AccountInformation {
 	return &AccountInformation{c: c, address: address}
 }
 
+func (c *Client) AccountAssetInformation(address string, assetId uint64) *AccountAssetInformation {
+	return &AccountAssetInformation{c: c, address: address, assetId: assetId}
+}
+
+func (c *Client) AccountApplicationInformation(address string, applicationId uint64) *AccountApplicationInformation {
+	return &AccountApplicationInformation{c: c, address: address, applicationId: applicationId}
+}
+
 func (c *Client) PendingTransactionsByAddress(address string) *PendingTransactionsByAddress {
 	return &PendingTransactionsByAddress{c: c, address: address}
 }
@@ -72,8 +85,12 @@ func (c *Client) Block(round uint64) *Block {
 	return &Block{c: c, round: round}
 }
 
-func (c *Client) GetProof(round uint64, txid string) *GetProof {
-	return &GetProof{c: c, round: round, txid: txid}
+func (c *Client) GetBlockHash(round uint64) *GetBlockHash {
+	return &GetBlockHash{c: c, round: round}
+}
+
+func (c *Client) GetTransactionProof(round uint64, txid string) *GetTransactionProof {
+	return &GetTransactionProof{c: c, round: round, txid: txid}
 }
 
 func (c *Client) Supply() *Supply {
@@ -104,16 +121,52 @@ func (c *Client) PendingTransactionInformation(txid string) *PendingTransactionI
 	return &PendingTransactionInformation{c: c, txid: txid}
 }
 
+func (c *Client) GetLedgerStateDelta(round uint64) *GetLedgerStateDelta {
+	return &GetLedgerStateDelta{c: c, round: round}
+}
+
+func (c *Client) GetStateProof(round uint64) *GetStateProof {
+	return &GetStateProof{c: c, round: round}
+}
+
+func (c *Client) GetLightBlockHeaderProof(round uint64) *GetLightBlockHeaderProof {
+	return &GetLightBlockHeaderProof{c: c, round: round}
+}
+
 func (c *Client) GetApplicationByID(applicationId uint64) *GetApplicationByID {
 	return &GetApplicationByID{c: c, applicationId: applicationId}
+}
+
+func (c *Client) GetApplicationBoxes(applicationId uint64) *GetApplicationBoxes {
+	return &GetApplicationBoxes{c: c, applicationId: applicationId}
+}
+
+func (c *Client) GetApplicationBoxByName(applicationId uint64, name []byte) *GetApplicationBoxByName {
+	return (&GetApplicationBoxByName{c: c, applicationId: applicationId}).name(name)
 }
 
 func (c *Client) GetAssetByID(assetId uint64) *GetAssetByID {
 	return &GetAssetByID{c: c, assetId: assetId}
 }
 
+func (c *Client) UnsetSyncRound() *UnsetSyncRound {
+	return &UnsetSyncRound{c: c}
+}
+
+func (c *Client) GetSyncRound() *GetSyncRound {
+	return &GetSyncRound{c: c}
+}
+
+func (c *Client) SetSyncRound(round uint64) *SetSyncRound {
+	return &SetSyncRound{c: c, round: round}
+}
+
 func (c *Client) TealCompile(source []byte) *TealCompile {
 	return &TealCompile{c: c, source: source}
+}
+
+func (c *Client) TealDisassemble(source []byte) *TealDisassemble {
+	return &TealDisassemble{c: c, source: source}
 }
 
 func (c *Client) TealDryrun(request models.DryrunRequest) *TealDryrun {

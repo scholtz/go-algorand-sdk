@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // SendRawTransaction broadcasts a raw transaction to the network.
@@ -29,7 +29,7 @@ func (s *SendRawTransaction) Do(ctx context.Context, headers ...*common.Header) 
 	if addContentType {
 		headers = append(headers, &common.Header{"Content-Type", "application/x-binary"})
 	}
-	err = s.c.post(ctx, &response, "/v2/transactions", s.rawtxn, headers)
+	err = s.c.post(ctx, &response, "/v2/transactions", nil, headers, s.rawtxn)
 	txid = response.Txid
 	return
 }

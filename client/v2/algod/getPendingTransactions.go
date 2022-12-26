@@ -3,9 +3,9 @@ package algod
 import (
 	"context"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
-	"github.com/algorand/go-algorand-sdk/types"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/types"
 )
 
 // PendingTransactionsParams contains all of the query parameters for url serialization.
@@ -32,6 +32,7 @@ type PendingTransactions struct {
 // txns.
 func (s *PendingTransactions) Max(Max uint64) *PendingTransactions {
 	s.p.Max = Max
+
 	return s
 }
 

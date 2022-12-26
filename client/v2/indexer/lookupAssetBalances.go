@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // LookupAssetBalancesParams contains all of the query parameters for url serialization.
@@ -26,15 +26,13 @@ type LookupAssetBalancesParams struct {
 	// localstates.
 	IncludeAll bool `url:"include-all,omitempty"`
 
-	// Limit maximum number of results to return.
+	// Limit maximum number of results to return. There could be additional pages even
+	// if the limit is not reached.
 	Limit uint64 `url:"limit,omitempty"`
 
 	// NextToken the next page of results. Use the next token provided by the previous
 	// results.
 	NextToken string `url:"next,omitempty"`
-
-	// Round include results for the specified round.
-	Round uint64 `url:"round,omitempty"`
 }
 
 // LookupAssetBalances lookup the list of accounts who hold this asset
@@ -51,6 +49,7 @@ type LookupAssetBalances struct {
 // case the asset will be used.
 func (s *LookupAssetBalances) CurrencyGreaterThan(CurrencyGreaterThan uint64) *LookupAssetBalances {
 	s.p.CurrencyGreaterThan = CurrencyGreaterThan
+
 	return s
 }
 
@@ -59,6 +58,7 @@ func (s *LookupAssetBalances) CurrencyGreaterThan(CurrencyGreaterThan uint64) *L
 // will be used.
 func (s *LookupAssetBalances) CurrencyLessThan(CurrencyLessThan uint64) *LookupAssetBalances {
 	s.p.CurrencyLessThan = CurrencyLessThan
+
 	return s
 }
 
@@ -67,12 +67,15 @@ func (s *LookupAssetBalances) CurrencyLessThan(CurrencyLessThan uint64) *LookupA
 // localstates.
 func (s *LookupAssetBalances) IncludeAll(IncludeAll bool) *LookupAssetBalances {
 	s.p.IncludeAll = IncludeAll
+
 	return s
 }
 
-// Limit maximum number of results to return.
+// Limit maximum number of results to return. There could be additional pages even
+// if the limit is not reached.
 func (s *LookupAssetBalances) Limit(Limit uint64) *LookupAssetBalances {
 	s.p.Limit = Limit
+
 	return s
 }
 
@@ -80,17 +83,12 @@ func (s *LookupAssetBalances) Limit(Limit uint64) *LookupAssetBalances {
 // results.
 func (s *LookupAssetBalances) NextToken(NextToken string) *LookupAssetBalances {
 	s.p.NextToken = NextToken
-	return s
-}
 
-// Round include results for the specified round.
-func (s *LookupAssetBalances) Round(Round uint64) *LookupAssetBalances {
-	s.p.Round = Round
 	return s
 }
 
 // Do performs the HTTP request
 func (s *LookupAssetBalances) Do(ctx context.Context, headers ...*common.Header) (response models.AssetBalancesResponse, err error) {
-	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/assets/%v/balances", s.assetId), s.p, headers)
+	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/assets/%s/balances", common.EscapeParams(s.assetId)...), s.p, headers)
 	return
 }

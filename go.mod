@@ -1,16 +1,18 @@
-module github.com/algorand/go-algorand-sdk
+module github.com/algorand/go-algorand-sdk/v2
 
-go 1.13
+go 1.17
 
 require (
-	github.com/algorand/go-codec v1.1.7
-	github.com/algorand/go-codec/codec v1.1.7
+	github.com/algorand/avm-abi v0.1.1
+	github.com/algorand/go-codec/codec v1.1.8
 	github.com/cucumber/godog v0.8.1
-	github.com/davecgh/go-spew v1.1.1
 	github.com/google/go-querystring v1.0.0
-	github.com/nsf/jsondiff v0.0.0-20200515183724-f29ed568f4ce
-	github.com/pmezard/go-difflib v1.0.0
-	github.com/stretchr/testify v1.3.0
-	golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550
-	golang.org/x/mobile v0.0.0-20211109191125-d61a72f26a1a // indirect
+	github.com/stretchr/testify v1.7.1
+	golang.org/x/crypto v0.0.0-20210921155107-089bfa567519
+)
+
+require (
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 )

@@ -4,12 +4,17 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // LookupAccountByIDParams contains all of the query parameters for url serialization.
 type LookupAccountByIDParams struct {
+
+	// Exclude exclude additional items such as asset holdings, application local data
+	// stored for this account, asset parameters created by this account, and
+	// application parameters created by this account.
+	Exclude []string `url:"exclude,omitempty,comma"`
 
 	// IncludeAll include all items including closed accounts, deleted applications,
 	// destroyed assets, opted-out asset holdings, and closed-out application
@@ -29,17 +34,28 @@ type LookupAccountByID struct {
 	p LookupAccountByIDParams
 }
 
+// Exclude exclude additional items such as asset holdings, application local data
+// stored for this account, asset parameters created by this account, and
+// application parameters created by this account.
+func (s *LookupAccountByID) Exclude(Exclude []string) *LookupAccountByID {
+	s.p.Exclude = Exclude
+
+	return s
+}
+
 // IncludeAll include all items including closed accounts, deleted applications,
 // destroyed assets, opted-out asset holdings, and closed-out application
 // localstates.
 func (s *LookupAccountByID) IncludeAll(IncludeAll bool) *LookupAccountByID {
 	s.p.IncludeAll = IncludeAll
+
 	return s
 }
 
 // Round include results for the specified round.
 func (s *LookupAccountByID) Round(Round uint64) *LookupAccountByID {
 	s.p.Round = Round
+
 	return s
 }
 

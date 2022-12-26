@@ -3,22 +3,24 @@ package common
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 
-	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/json"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/msgpack"
 	"github.com/google/go-querystring/query"
 )
 
 // rawRequestPaths is a set of paths where the body should not be urlencoded
 var rawRequestPaths = map[string]bool{
-	"/v2/transactions": true,
-	"/v2/teal/compile": true,
-	"/v2/teal/dryrun":  true,
+	"/v2/transactions":     true,
+	"/v2/teal/compile":     true,
+	"/v2/teal/disassemble": true,
+	"/v2/teal/dryrun":      true,
 }
 
 // Header is a struct for custom headers.
@@ -102,32 +104,33 @@ func mergeRawQueries(q1, q2 string) string {
 }
 
 // submitFormRaw is a helper used for submitting (ex.) GETs and POSTs to the server
-func (client *Client) submitFormRaw(ctx context.Context, path string, body interface{}, requestMethod string, encodeJSON bool, headers []*Header) (resp *http.Response, err error) {
+func (client *Client) submitFormRaw(ctx context.Context, path string, params interface{}, requestMethod string, encodeJSON bool, headers []*Header, body interface{}) (resp *http.Response, err error) {
 	queryURL := client.serverURL
 	queryURL.Path += path
 
 	var req *http.Request
 	var bodyReader io.Reader
-	if body != nil {
-		if requestMethod == "POST" && rawRequestPaths[path] {
-			reqBytes, ok := body.([]byte)
-			if !ok {
-				return nil, fmt.Errorf("couldn't decode raw body as bytes")
-			}
-			bodyReader = bytes.NewBuffer(reqBytes)
-		} else {
-			v, err := query.Values(body)
-			if err != nil {
-				return nil, err
-			}
+	var v url.Values
 
-			queryURL.RawQuery = mergeRawQueries(queryURL.RawQuery, v.Encode())
-			if encodeJSON {
-				jsonValue, _ := json.Marshal(body)
-				bodyReader = bytes.NewBuffer(jsonValue)
-			}
+	if params != nil {
+		v, err = query.Values(params)
+		if err != nil {
+			return nil, err
 		}
 	}
+
+	if requestMethod == "POST" && rawRequestPaths[path] {
+		reqBytes, ok := body.([]byte)
+		if !ok {
+			return nil, fmt.Errorf("couldn't decode raw body as bytes")
+		}
+		bodyReader = bytes.NewBuffer(reqBytes)
+	} else if encodeJSON {
+		jsonValue := json.Encode(params)
+		bodyReader = bytes.NewBuffer(jsonValue)
+	}
+
+	queryURL.RawQuery = mergeRawQueries(queryURL.RawQuery, v.Encode())
 
 	req, err = http.NewRequest(requestMethod, queryURL.String(), bodyReader)
 	if err != nil {
@@ -160,8 +163,8 @@ func (client *Client) submitFormRaw(ctx context.Context, path string, body inter
 	return resp, nil
 }
 
-func (client *Client) submitForm(ctx context.Context, response interface{}, path string, body interface{}, requestMethod string, encodeJSON bool, headers []*Header) error {
-	resp, err := client.submitFormRaw(ctx, path, body, requestMethod, encodeJSON, headers)
+func (client *Client) submitForm(ctx context.Context, response interface{}, path string, params interface{}, requestMethod string, encodeJSON bool, headers []*Header, body interface{}) error {
+	resp, err := client.submitFormRaw(ctx, path, params, requestMethod, encodeJSON, headers, body)
 	if err != nil {
 		return err
 	}
@@ -182,7 +185,7 @@ func (client *Client) submitForm(ctx context.Context, response interface{}, path
 	}
 
 	// Attempt to unmarshal a response regardless of whether or not there was an error.
-	err = json.Unmarshal(bodyBytes, response)
+	err = json.LenientDecode(bodyBytes, response)
 	if responseErr != nil {
 		// Even if there was an unmarshalling error, return the HTTP error first if there was one.
 		return responseErr
@@ -190,15 +193,20 @@ func (client *Client) submitForm(ctx context.Context, response interface{}, path
 	return err
 }
 
+// Delete performs a DELETE request to the specific path against the server
+func (client *Client) Delete(ctx context.Context, response interface{}, path string, params interface{}, headers []*Header) error {
+	return client.submitForm(ctx, response, path, params, "DELETE", false /* encodeJSON */, headers, nil)
+}
+
 // Get performs a GET request to the specific path against the server
-func (client *Client) Get(ctx context.Context, response interface{}, path string, body interface{}, headers []*Header) error {
-	return client.submitForm(ctx, response, path, body, "GET", false /* encodeJSON */, headers)
+func (client *Client) Get(ctx context.Context, response interface{}, path string, params interface{}, headers []*Header) error {
+	return client.submitForm(ctx, response, path, params, "GET", false /* encodeJSON */, headers, nil)
 }
 
 // GetRaw performs a GET request to the specific path against the server and returns the raw body bytes.
-func (client *Client) GetRaw(ctx context.Context, path string, body interface{}, headers []*Header) (response []byte, err error) {
+func (client *Client) GetRaw(ctx context.Context, path string, params interface{}, headers []*Header) (response []byte, err error) {
 	var resp *http.Response
-	resp, err = client.submitFormRaw(ctx, path, body, "GET", false /* encodeJSON */, headers)
+	resp, err = client.submitFormRaw(ctx, path, params, "GET", false /* encodeJSON */, headers, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -212,21 +220,47 @@ func (client *Client) GetRaw(ctx context.Context, path string, body interface{},
 }
 
 // GetRawMsgpack performs a GET request to the specific path against the server and returns the decoded messagepack response.
-func (client *Client) GetRawMsgpack(ctx context.Context, response interface{}, path string, body interface{}, headers []*Header) error {
-	resp, err := client.submitFormRaw(ctx, path, body, "GET", false /* encodeJSON */, headers)
+func (client *Client) GetRawMsgpack(ctx context.Context, response interface{}, path string, params interface{}, headers []*Header) error {
+	resp, err := client.submitFormRaw(ctx, path, params, "GET", false /* encodeJSON */, headers, nil)
 	if err != nil {
 		return err
 	}
 
 	defer resp.Body.Close()
 
-	dec := msgpack.NewDecoder(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		var bodyBytes []byte
+		bodyBytes, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return fmt.Errorf("failed to read response body: %+v", err)
+		}
+
+		return extractError(resp.StatusCode, bodyBytes)
+	}
+
+	dec := msgpack.NewLenientDecoder(resp.Body)
 	return dec.Decode(&response)
 }
 
 // Post sends a POST request to the given path with the given body object.
 // No query parameters will be sent if body is nil.
 // response must be a pointer to an object as post writes the response there.
-func (client *Client) Post(ctx context.Context, response interface{}, path string, body interface{}, headers []*Header) error {
-	return client.submitForm(ctx, response, path, body, "POST", true /* encodeJSON */, headers)
+func (client *Client) Post(ctx context.Context, response interface{}, path string, params interface{}, headers []*Header, body interface{}) error {
+	return client.submitForm(ctx, response, path, params, "POST", true /* encodeJSON */, headers, body)
+}
+
+// Helper function for correctly formatting and escaping URL path parameters.
+// Used in the generated API client code.
+func EscapeParams(params ...interface{}) []interface{} {
+	paramsStr := make([]interface{}, len(params))
+	for i, param := range params {
+		switch v := param.(type) {
+		case string:
+			paramsStr[i] = url.PathEscape(v)
+		default:
+			paramsStr[i] = fmt.Sprintf("%v", v)
+		}
+	}
+
+	return paramsStr
 }

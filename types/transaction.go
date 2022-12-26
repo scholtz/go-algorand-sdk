@@ -17,6 +17,7 @@ type Transaction struct {
 	AssetTransferTxnFields
 	AssetFreezeTxnFields
 	ApplicationFields
+	StateProofTxnFields
 }
 
 // SignedTxn wraps a transaction and a signature. The encoding of this struct
@@ -35,12 +36,13 @@ type SignedTxn struct {
 type KeyregTxnFields struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
 
-	VotePK           VotePK `codec:"votekey"`
-	SelectionPK      VRFPK  `codec:"selkey"`
-	VoteFirst        Round  `codec:"votefst"`
-	VoteLast         Round  `codec:"votelst"`
-	VoteKeyDilution  uint64 `codec:"votekd"`
-	Nonparticipation bool   `codec:"nonpart"`
+	VotePK           VotePK         `codec:"votekey"`
+	SelectionPK      VRFPK          `codec:"selkey"`
+	VoteFirst        Round          `codec:"votefst"`
+	VoteLast         Round          `codec:"votelst"`
+	VoteKeyDilution  uint64         `codec:"votekd"`
+	Nonparticipation bool           `codec:"nonpart"`
+	StateProofPK     MerkleVerifier `codec:"sprfkey"`
 }
 
 // PaymentTxnFields captures the fields used by payment transactions.
@@ -188,7 +190,7 @@ type SuggestedParams struct {
 
 	// The minimum transaction fee (not per byte) required for the
 	// txn to validate for the current network protocol.
-	MinFee uint64  `codec:"min-fee"`
+	MinFee uint64 `codec:"min-fee"`
 }
 
 // AddLease adds the passed lease (see types/transaction.go) to the header of the passed transaction

@@ -3,8 +3,8 @@ package indexer
 import (
 	"context"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // SearchForApplicationsParams contains all of the query parameters for url serialization.
@@ -13,12 +13,16 @@ type SearchForApplicationsParams struct {
 	// ApplicationId application ID
 	ApplicationId uint64 `url:"application-id,omitempty"`
 
+	// Creator filter just applications with the given creator address.
+	Creator string `url:"creator,omitempty"`
+
 	// IncludeAll include all items including closed accounts, deleted applications,
 	// destroyed assets, opted-out asset holdings, and closed-out application
 	// localstates.
 	IncludeAll bool `url:"include-all,omitempty"`
 
-	// Limit maximum number of results to return.
+	// Limit maximum number of results to return. There could be additional pages even
+	// if the limit is not reached.
 	Limit uint64 `url:"limit,omitempty"`
 
 	// Next the next page of results. Use the next token provided by the previous
@@ -36,6 +40,14 @@ type SearchForApplications struct {
 // ApplicationId application ID
 func (s *SearchForApplications) ApplicationId(ApplicationId uint64) *SearchForApplications {
 	s.p.ApplicationId = ApplicationId
+
+	return s
+}
+
+// Creator filter just applications with the given creator address.
+func (s *SearchForApplications) Creator(Creator string) *SearchForApplications {
+	s.p.Creator = Creator
+
 	return s
 }
 
@@ -44,12 +56,15 @@ func (s *SearchForApplications) ApplicationId(ApplicationId uint64) *SearchForAp
 // localstates.
 func (s *SearchForApplications) IncludeAll(IncludeAll bool) *SearchForApplications {
 	s.p.IncludeAll = IncludeAll
+
 	return s
 }
 
-// Limit maximum number of results to return.
+// Limit maximum number of results to return. There could be additional pages even
+// if the limit is not reached.
 func (s *SearchForApplications) Limit(Limit uint64) *SearchForApplications {
 	s.p.Limit = Limit
+
 	return s
 }
 
@@ -57,6 +72,7 @@ func (s *SearchForApplications) Limit(Limit uint64) *SearchForApplications {
 // results.
 func (s *SearchForApplications) Next(Next string) *SearchForApplications {
 	s.p.Next = Next
+
 	return s
 }
 

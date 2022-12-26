@@ -2,24 +2,31 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"github.com/algorand/go-algorand-sdk/v2/transaction"
+	"strings"
 
-	"github.com/algorand/go-algorand-sdk/client/algod"
-	"github.com/algorand/go-algorand-sdk/client/kmd"
-	"github.com/algorand/go-algorand-sdk/crypto"
-	"github.com/algorand/go-algorand-sdk/future"
-	"github.com/algorand/go-algorand-sdk/types"
+	"github.com/algorand/go-algorand-sdk/v2/client/kmd"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/algod"
+	"github.com/algorand/go-algorand-sdk/v2/crypto"
+	"github.com/algorand/go-algorand-sdk/v2/types"
 )
 
 // CHANGE ME
-const kmdAddress = "http://localhost:7833"
-const kmdToken = "b1105d6dc7192617a63acfc023d9a693aa5690dc20fbea40f571150bfc7d6339"
-const algodAddress = "http://localhost:8080"
-const algodToken = "330b2e4fc9b20f4f89812cf87f1dabeb716d23e3f11aec97a61ff5f750563b78"
+const (
+	exampleWalletName     = "unencrypted-default-wallet"
+	exampleWalletPassword = ""
+	exampleWalletDriver   = kmd.DefaultWalletDriver
+)
 
-const exampleWalletName = "example-wallet"
-const exampleWalletPassword = "example-password"
-const exampleWalletDriver = kmd.DefaultWalletDriver
+var (
+	kmdAddress = "http://localhost:4002"
+	kmdToken   = strings.Repeat("a", 64)
+
+	algodAddress = "http://localhost:4001"
+	algodToken   = strings.Repeat("a", 64)
+)
 
 func main() {
 	// Create a kmd client
@@ -38,7 +45,7 @@ func main() {
 	}
 
 	// Print algod status
-	nodeStatus, err := algodClient.Status()
+	nodeStatus, err := algodClient.Status().Do(context.Background())
 	if err != nil {
 		fmt.Printf("error getting algod status: %s\n", err)
 		return
@@ -106,13 +113,13 @@ func main() {
 	privateKey := resp4.PrivateKey
 
 	// Get the suggested transaction parameters
-	txParams, err := algodClient.BuildSuggestedParams()
+	txParams, err := algodClient.SuggestedParams().Do(context.Background())
 	if err != nil {
 		fmt.Printf("error getting suggested tx params: %s\n", err)
 		return
 	}
 
-	tx, err := future.MakePaymentTxn(addresses[0], addresses[1], 100, nil, "", txParams)
+	tx, err := transaction.MakePaymentTxn(addresses[0], addresses[1], 100, nil, "", txParams)
 	if err != nil {
 		fmt.Printf("Error creating transaction: %s\n", err)
 		return

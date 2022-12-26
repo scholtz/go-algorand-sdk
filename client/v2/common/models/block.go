@@ -10,6 +10,10 @@ type Block struct {
 	// GenesisId (gen) ID to which this block belongs.
 	GenesisId string `json:"genesis-id"`
 
+	// ParticipationUpdates participation account data that needs to be checked/acted
+	// on by the network.
+	ParticipationUpdates ParticipationUpdates `json:"participation-updates,omitempty"`
+
 	// PreviousBlockHash (prev) Previous block hash.
 	PreviousBlockHash []byte `json:"previous-block-hash"`
 
@@ -21,6 +25,9 @@ type Block struct {
 
 	// Seed (seed) Sortition seed.
 	Seed []byte `json:"seed"`
+
+	// StateProofTracking tracks the status of state proofs.
+	StateProofTracking []StateProofTracking `json:"state-proof-tracking,omitempty"`
 
 	// Timestamp (ts) Block creation timestamp in seconds since eposh
 	Timestamp uint64 `json:"timestamp"`
@@ -36,6 +43,12 @@ type Block struct {
 	// transactions but in a different order and with different signatures will have
 	// the same TxnRoot.
 	TransactionsRoot []byte `json:"transactions-root"`
+
+	// TransactionsRootSha256 (txn256) TransactionsRootSHA256 is an auxiliary
+	// TransactionRoot, built using a vector commitment instead of a merkle tree, and
+	// SHA256 hash function instead of the default SHA512_256. This commitment can be
+	// used on environments where only the SHA256 function exists.
+	TransactionsRootSha256 []byte `json:"transactions-root-sha256"`
 
 	// TxnCounter (tc) TxnCounter counts the number of transactions committed in the
 	// ledger, from the time at which support for this feature was introduced.

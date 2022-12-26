@@ -8,11 +8,11 @@ import (
 
 	"github.com/cucumber/godog"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/algod"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
-	"github.com/algorand/go-algorand-sdk/client/v2/indexer"
-	"github.com/algorand/go-algorand-sdk/encoding/json"
-	"github.com/algorand/go-algorand-sdk/types"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/algod"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/indexer"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/json"
+	"github.com/algorand/go-algorand-sdk/v2/types"
 )
 
 var algodC *algod.Client
@@ -78,6 +78,19 @@ func weMakeAnyCallTo(client /* algod/indexer */, endpoint string) (err error) {
 			response, err = indexerC.SearchForTransactions().Do(context.Background())
 		case "lookupBlock":
 			response, err = indexerC.LookupBlock(10).Do(context.Background())
+		case "lookupTransaction":
+			response, err = indexerC.LookupTransaction("").Do(context.Background())
+		case "lookupAccountAppLocalStates":
+			response, err = indexerC.LookupAccountAppLocalStates("").Do(context.Background())
+		case "lookupAccountCreatedApplications":
+			response, err =
+				indexerC.LookupAccountCreatedApplications("").Do(context.Background())
+		case "lookupAccountAssets":
+			response, err = indexerC.LookupAccountAssets("").Do(context.Background())
+		case "lookupAccountCreatedAssets":
+			response, err = indexerC.LookupAccountCreatedAssets("").Do(context.Background())
+		case "lookupApplicationLogsByID":
+			response, err = indexerC.LookupApplicationLogsByID(10).Do(context.Background())
 		case "any":
 			// This is an error case
 			// pickup the error as the response
@@ -112,7 +125,7 @@ func weMakeAnyCallTo(client /* algod/indexer */, endpoint string) (err error) {
 				LastRound:        uint64(sParams.FirstRoundValid),
 				MinFee:           sParams.MinFee,
 			}
-		case "GetAccountInformation":
+		case "AccountInformation":
 			response, err = algodC.AccountInformation("acct").Do(context.Background())
 		case "GetApplicationByID":
 			response, err = algodC.GetApplicationByID(10).Do(context.Background())
@@ -138,10 +151,39 @@ func weMakeAnyCallTo(client /* algod/indexer */, endpoint string) (err error) {
 			}
 		case "DryRun":
 			response, err = algodC.TealDryrun(models.DryrunRequest{}).Do(context.Background())
+		case "GetTransactionProof":
+			fallthrough
 		case "Proof":
-			response, err = algodC.GetProof(10, "asdf").Do(context.Background())
+			response, err = algodC.GetTransactionProof(10, "asdf").Do(context.Background())
 		case "GetGenesis":
 			response, err = algodC.GetGenesis().Do(context.Background())
+		case "AccountApplicationInformation":
+			response, err =
+				algodC.AccountApplicationInformation("abc", 123).Do(context.Background())
+		case "AccountAssetInformation":
+			response, err =
+				algodC.AccountAssetInformation("abc", 123).Do(context.Background())
+		case "GetLightBlockHeaderProof":
+			response, err =
+				algodC.GetLightBlockHeaderProof(123).Do(context.Background())
+		case "GetStateProof":
+			response, err =
+				algodC.GetStateProof(123).Do(context.Background())
+		case "GetBlockHash":
+			response, err =
+				algodC.GetBlockHash(123).Do(context.Background())
+		case "GetLedgerStateDelta":
+			response, err =
+				algodC.GetLedgerStateDelta(123).Do(context.Background())
+		case "UnsetSyncRound":
+			response, err =
+				algodC.UnsetSyncRound().Do(context.Background())
+		case "SetSyncRound":
+			response, err =
+				algodC.SetSyncRound(123).Do(context.Background())
+		case "GetSyncRound":
+			response, err =
+				algodC.GetSyncRound().Do(context.Background())
 		case "any":
 			// This is an error case
 			// pickup the error as the response

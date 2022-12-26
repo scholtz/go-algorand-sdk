@@ -3,36 +3,36 @@ package test
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/gob"
+	"encoding/hex"
+	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"github.com/algorand/go-algorand-sdk/v2/transaction"
 	"os"
+	"path"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"path/filepath"
-
 	"golang.org/x/crypto/ed25519"
 
-	"github.com/algorand/go-algorand-sdk/auction"
-	"github.com/algorand/go-algorand-sdk/client/algod"
-	"github.com/algorand/go-algorand-sdk/client/algod/models"
-	"github.com/algorand/go-algorand-sdk/client/kmd"
-	algodV2 "github.com/algorand/go-algorand-sdk/client/v2/algod"
-	commonV2 "github.com/algorand/go-algorand-sdk/client/v2/common"
-	modelsV2 "github.com/algorand/go-algorand-sdk/client/v2/common/models"
-	"github.com/algorand/go-algorand-sdk/crypto"
-	"github.com/algorand/go-algorand-sdk/encoding/msgpack"
-	"github.com/algorand/go-algorand-sdk/future"
-	"github.com/algorand/go-algorand-sdk/mnemonic"
-	"github.com/algorand/go-algorand-sdk/templates"
-	"github.com/algorand/go-algorand-sdk/types"
+	"github.com/algorand/go-algorand-sdk/v2/abi"
+	"github.com/algorand/go-algorand-sdk/v2/auction"
+	"github.com/algorand/go-algorand-sdk/v2/client/kmd"
+	algodV2 "github.com/algorand/go-algorand-sdk/v2/client/v2/algod"
+	commonV2 "github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	modelsV2 "github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
+	indexerV2 "github.com/algorand/go-algorand-sdk/v2/client/v2/indexer"
+	"github.com/algorand/go-algorand-sdk/v2/crypto"
+	"github.com/algorand/go-algorand-sdk/v2/encoding/msgpack"
+	"github.com/algorand/go-algorand-sdk/v2/logic"
+	"github.com/algorand/go-algorand-sdk/v2/mnemonic"
+	"github.com/algorand/go-algorand-sdk/v2/types"
 	"github.com/cucumber/godog"
 	"github.com/cucumber/godog/colors"
 )
@@ -56,22 +56,20 @@ var a types.Address
 var msig crypto.MultisigAccount
 var msigsig types.MultisigSig
 var kcl kmd.Client
-var acl algod.Client
 var aclv2 *algodV2.Client
+var iclv2 *indexerV2.Client
 var walletName string
 var walletPswd string
 var walletID string
 var handle string
 var versions []string
-var status models.NodeStatus
-var statusAfter models.NodeStatus
 var msigExp kmd.ExportMultisigResponse
 var pk string
+var rekey string
 var accounts []string
 var e bool
 var lastRound uint64
 var sugParams types.SuggestedParams
-var sugFee models.TransactionFee
 var bid types.Bid
 var sbid types.NoteField
 var oldBid types.NoteField
@@ -82,14 +80,29 @@ var microalgos types.MicroAlgos
 var bytetxs [][]byte
 var votekey string
 var selkey string
+var stateProofPK string
 var votefst uint64
 var votelst uint64
 var votekd uint64
-var num string
-var backupTxnSender string
-var groupTxnBytes []byte
+var nonpart bool
 var data []byte
 var sig types.Signature
+var abiMethod abi.Method
+var abiMethods []abi.Method
+var abiJsonString string
+var abiInterface abi.Interface
+var abiContract abi.Contract
+var txComposer transaction.AtomicTransactionComposer
+var accountTxSigner transaction.BasicAccountTransactionSigner
+var methodArgs []interface{}
+var sigTxs [][]byte
+var accountTxAndSigner transaction.TransactionWithSigner
+var txTrace transaction.DryrunTxnResult
+var trace string
+var sourceMap logic.SourceMap
+var srcMapping map[string]interface{}
+var seeminglyProgram []byte
+var sanityCheckError error
 
 var assetTestFixture struct {
 	Creator               string
@@ -98,27 +111,9 @@ var assetTestFixture struct {
 	AssetUnitName         string
 	AssetURL              string
 	AssetMetadataHash     string
-	ExpectedParams        models.AssetParams
-	QueriedParams         models.AssetParams
+	ExpectedParams        modelsV2.AssetParams
+	QueriedParams         modelsV2.AssetParams
 	LastTransactionIssued types.Transaction
-}
-
-var contractTestFixture struct {
-	activeAddress      string
-	contractFundAmount uint64
-	split              templates.Split
-	splitN             uint64
-	splitD             uint64
-	splitMin           uint64
-	htlc               templates.HTLC
-	htlcPreImage       string
-	periodicPay        templates.PeriodicPayment
-	periodicPayPeriod  uint64
-	limitOrder         templates.LimitOrder
-	limitOrderN        uint64
-	limitOrderD        uint64
-	limitOrderMin      uint64
-	dynamicFee         templates.DynamicFee
 }
 
 var tealCompleResult struct {
@@ -136,6 +131,45 @@ var opt = godog.Options{
 	Format: "progress", // can define default values
 }
 
+// Dev mode helper functions
+const devModeInitialAmount = 10_000_000
+
+/**
+ * waitForAlgodInDevMode is a Dev mode helper method
+ * to wait for blocks to be finalized.
+ * Since Dev mode produces blocks on a per transaction basis, it's possible
+ * algod generates a block _before_ the corresponding SDK call to wait for a block.
+ * Without _any_ wait, it's possible the SDK looks for the transaction before algod completes processing.
+ * So, the method performs a local sleep to simulate waiting for a block.
+ */
+func waitForAlgodInDevMode() {
+	time.Sleep(500 * time.Millisecond)
+}
+
+func initializeAccount(accountAddress string) error {
+	params, err := aclv2.SuggestedParams().Do(context.Background())
+	if err != nil {
+		return err
+	}
+
+	txn, err = transaction.MakePaymentTxn(accounts[0], accountAddress, devModeInitialAmount, []byte{}, "", params)
+	if err != nil {
+		return err
+	}
+
+	res, err := kcl.SignTransaction(handle, walletPswd, txn)
+	if err != nil {
+		return err
+	}
+
+	_, err = aclv2.SendRawTransaction(res.SignedTransaction).Do(context.Background())
+	if err != nil {
+		return err
+	}
+	waitForAlgodInDevMode()
+	return err
+}
+
 func init() {
 	godog.BindFlags("godog.", flag.CommandLine, &opt)
 }
@@ -148,7 +182,7 @@ func TestMain(m *testing.M) {
 		FeatureContext(s)
 		AlgodClientV2Context(s)
 		IndexerUnitTestContext(s)
-		IndexerIntegrationTestContext(s)
+		TransactionsUnitContext(s)
 		ApplicationsContext(s)
 		ApplicationsUnitContext(s)
 		ResponsesContext(s)
@@ -172,7 +206,6 @@ func FeatureContext(s *godog.Suite) {
 	s.Step("the wallet handle should not work", tryHandle)
 	s.Step(`payment transaction parameters (\d+) (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" (\d+) "([^"]*)" "([^"]*)"`, txnParams)
 	s.Step(`mnemonic for private key "([^"]*)"`, mnForSk)
-	s.Step("I create the payment transaction", createTxn)
 	s.Step(`multisig addresses "([^"]*)"`, msigAddresses)
 	s.Step("I create the multisig payment transaction$", createMsigTxn)
 	s.Step("I create the multisig payment transaction with zero fee", createMsigTxnZeroFee)
@@ -186,17 +219,16 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`the multisig address should equal the golden "([^"]*)"`, equalMsigAddrGolden)
 	s.Step("I get versions with algod", aclV)
 	s.Step("v1 should be in the versions", v1InVersions)
+	s.Step("v2 should be in the versions", v2InVersions)
 	s.Step("I get versions with kmd", kclV)
-	s.Step("I get the status", getStatus)
-	s.Step(`^I get status after this block`, statusAfterBlock)
-	s.Step("I can get the block info", block)
 	s.Step("I import the multisig", importMsig)
 	s.Step("the multisig should be in the wallet", msigInWallet)
 	s.Step("I export the multisig", expMsig)
 	s.Step("the multisig should equal the exported multisig", msigEq)
 	s.Step("I delete the multisig", deleteMsig)
 	s.Step("the multisig should not be in the wallet", msigNotInWallet)
-	s.Step("I generate a key using kmd", genKeyKmd)
+	s.Step("^I generate a key using kmd for rekeying and fund it$", genRekeyKmd)
+	s.Step("^I generate a key using kmd$", genKeyKmd)
 	s.Step("the key should be in the wallet", keyInWallet)
 	s.Step("I delete the key", deleteKey)
 	s.Step("the key should not be in the wallet", keyNotInWallet)
@@ -204,7 +236,6 @@ func FeatureContext(s *godog.Suite) {
 	s.Step("I import the key", importKey)
 	s.Step("the private key should be equal to the exported private key", skEqExport)
 	s.Step("a kmd client", kmdClient)
-	s.Step("an algod client", algodClient)
 	s.Step("wallet information", walletInfo)
 	s.Step(`default transaction with parameters (\d+) "([^"]*)"`, defaultTxn)
 	s.Step(`default multisig transaction with parameters (\d+) "([^"]*)"`, defaultMsigTxn)
@@ -213,23 +244,13 @@ func FeatureContext(s *godog.Suite) {
 	s.Step("I send the kmd-signed transaction", sendTxnKmd)
 	s.Step("I send the bogus kmd-signed transaction", sendTxnKmdFailureExpected)
 	s.Step("I send the multisig transaction", sendMsigTxn)
-	s.Step("the transaction should go through", checkTxn)
 	s.Step("the transaction should not go through", txnFail)
 	s.Step("I sign the transaction with kmd", signKmd)
 	s.Step("the signed transaction should equal the kmd signed transaction", signBothEqual)
 	s.Step("I sign the multisig transaction with kmd", signMsigKmd)
 	s.Step("the multisig transaction should equal the kmd signed multisig transaction", signMsigBothEqual)
-	s.Step(`I read a transaction "([^"]*)" from file "([^"]*)"`, readTxn)
-	s.Step("I write the transaction to file", writeTxn)
-	s.Step("the transaction should still be the same", checkEnc)
-	s.Step("I do my part", createSaveTxn)
 	s.Step(`^the node should be healthy`, nodeHealth)
 	s.Step(`^I get the ledger supply`, ledger)
-	s.Step(`^I get transactions by address and round`, txnsByAddrRound)
-	s.Step(`^I get pending transactions`, txnsPending)
-	s.Step(`^I get the suggested params`, suggestedParams)
-	s.Step(`^I get the suggested fee`, suggestedFee)
-	s.Step(`^the fee in the suggested params should equal the suggested fee`, checkSuggested)
 	s.Step(`^I create a bid`, createBid)
 	s.Step(`^I encode and decode the bid`, encDecBid)
 	s.Step(`^the bid should still be the same`, checkBid)
@@ -247,15 +268,9 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^I merge the multisig transactions`, mergeMsig)
 	s.Step(`^I convert (\d+) microalgos to algos and back`, microToAlgos)
 	s.Step(`^it should still be the same amount of microalgos (\d+)`, checkAlgos)
-	s.Step(`I get account information`, accInfo)
 	s.Step("I sign the bid", signBid)
-	s.Step("I get transactions by address only", txnsByAddrOnly)
-	s.Step("I get transactions by address and date", txnsByAddrDate)
-	s.Step(`key registration transaction parameters (\d+) (\d+) (\d+) "([^"]*)" "([^"]*)" "([^"]*)" (\d+) (\d+) (\d+) "([^"]*)" "([^"]*)`, keyregTxnParams)
-	s.Step("I create the key registration transaction", createKeyregTxn)
-	s.Step(`^I get recent transactions, limited by (\d+) transactions$`, getTxnsByCount)
+	s.Step(`default V2 key registration transaction "([^"]*)"`, createKeyregWithStateProof)
 	s.Step(`^I can get account information`, newAccInfo)
-	s.Step(`^I can get the transaction by ID$`, txnbyID)
 	s.Step("asset test fixture", createAssetTestFixture)
 	s.Step(`^default asset creation transaction with total issuance (\d+)$`, defaultAssetCreateTxn)
 	s.Step(`^I update the asset index$`, getAssetIndex)
@@ -272,18 +287,6 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^I create an un-freeze transaction targeting the second account$`, createUnfreezeTransactionTargetingSecondAccount)
 	s.Step(`^default-frozen asset creation transaction with total issuance (\d+)$`, defaultAssetCreateTxnWithDefaultFrozen)
 	s.Step(`^I create a transaction revoking (\d+) assets from a second account to creator$`, createRevocationTransaction)
-	s.Step(`^a split contract with ratio (\d+) to (\d+) and minimum payment (\d+)$`, aSplitContractWithRatioToAndMinimumPayment)
-	s.Step(`^I send the split transactions$`, iSendTheSplitTransactions)
-	s.Step(`^an HTLC contract with hash preimage "([^"]*)"$`, anHTLCContractWithHashPreimage)
-	s.Step(`^I fund the contract account$`, iFundTheContractAccount)
-	s.Step(`^I claim the algos$`, iClaimTheAlgosHTLC)
-	s.Step(`^a periodic payment contract with withdrawing window (\d+) and period (\d+)$`, aPeriodicPaymentContractWithWithdrawingWindowAndPeriod)
-	s.Step(`^I claim the periodic payment$`, iClaimThePeriodicPayment)
-	s.Step(`^a limit order contract with parameters (\d+) (\d+) (\d+)$`, aLimitOrderContractWithParameters)
-	s.Step(`^I swap assets for algos$`, iSwapAssetsForAlgos)
-	s.Step(`^a dynamic fee contract with amount (\d+)$`, aDynamicFeeContractWithAmount)
-	s.Step(`^I send the dynamic fee transactions$`, iSendTheDynamicFeeTransaction)
-	s.Step("contract test fixture", createContractTestFixture)
 	s.Step(`^I create a transaction transferring <amount> assets from creator to a second account$`, iCreateATransactionTransferringAmountAssetsFromCreatorToASecondAccount) // provide handler for when godog misreads
 	s.Step(`^base64 encoded data to sign "([^"]*)"$`, baseEncodedDataToSign)
 	s.Step(`^program hash "([^"]*)"$`, programHash)
@@ -292,13 +295,67 @@ func FeatureContext(s *godog.Suite) {
 	s.Step(`^base64 encoded program "([^"]*)"$`, baseEncodedProgram)
 	s.Step(`^base64 encoded private key "([^"]*)"$`, baseEncodedPrivateKey)
 	s.Step("an algod v2 client$", algodClientV2)
+	s.Step("an indexer v2 client$", indexerClientV2)
 	s.Step(`^I compile a teal program "([^"]*)"$`, tealCompile)
 	s.Step(`^it is compiled with (\d+) and "([^"]*)" and "([^"]*)"$`, tealCheckCompile)
+	s.Step(`^base64 decoding the response is the same as the binary "([^"]*)"$`, tealCheckCompileAgainstFile)
 	s.Step(`^I dryrun a "([^"]*)" program "([^"]*)"$`, tealDryrun)
 	s.Step(`^I get execution result "([^"]*)"$`, tealCheckDryrun)
+	s.Step(`^I create the Method object from method signature "([^"]*)"$`, createMethodObjectFromSignature)
+	s.Step(`^I serialize the Method object into json$`, serializeMethodObjectIntoJson)
+	s.Step(`^the produced json should equal "([^"]*)" loaded from "([^"]*)"$`, checkSerializedMethodObject)
+	s.Step(`^I create the Method object with name "([^"]*)" first argument type "([^"]*)" second argument type "([^"]*)" and return type "([^"]*)"$`, createMethodObjectFromProperties)
+	s.Step(`^I create the Method object with name "([^"]*)" first argument name "([^"]*)" first argument type "([^"]*)" second argument name "([^"]*)" second argument type "([^"]*)" and return type "([^"]*)"$`, createMethodObjectWithArgNames)
+	s.Step(`^I create the Method object with name "([^"]*)" method description "([^"]*)" first argument type "([^"]*)" first argument description "([^"]*)" second argument type "([^"]*)" second argument description "([^"]*)" and return type "([^"]*)"$`, createMethodObjectWithDescription)
+	s.Step(`^the txn count should be (\d+)$`, checkTxnCount)
+	s.Step(`^the method selector should be "([^"]*)"$`, checkMethodSelector)
+	s.Step(`^I create an Interface object from the Method object with name "([^"]*)" and description "([^"]*)"$`, createInterfaceObject)
+	s.Step(`^I serialize the Interface object into json$`, serializeInterfaceObjectIntoJson)
+	s.Step(`^I create a Contract object from the Method object with name "([^"]*)" and description "([^"]*)"$`, createContractObject)
+	s.Step(`^I set the Contract\'s appID to (\d+) for the network "([^"]*)"$`, iSetTheContractsAppIDToForTheNetwork)
+	s.Step(`^I serialize the Contract object into json$`, serializeContractObjectIntoJson)
+	s.Step(`^the deserialized json should equal the original Method object`, deserializeMethodJson)
+	s.Step(`^the deserialized json should equal the original Interface object`, deserializeInterfaceJson)
+	s.Step(`^the deserialized json should equal the original Contract object`, deserializeContractJson)
+	s.Step(`^a new AtomicTransactionComposer$`, aNewAtomicTransactionComposer)
+	s.Step(`^suggested transaction parameters fee (\d+), flat-fee "([^"]*)", first-valid (\d+), last-valid (\d+), genesis-hash "([^"]*)", genesis-id "([^"]*)"$`, suggestedTransactionParameters)
+	s.Step(`^an application id (\d+)$`, anApplicationId)
+	s.Step(`^I make a transaction signer for the ([^"]*) account\.$`, iMakeATransactionSignerForTheAccount)
+	s.Step(`^I create a new method arguments array\.$`, iCreateANewMethodArgumentsArray)
+	s.Step(`^I append the encoded arguments "([^"]*)" to the method arguments array\.$`, iAppendTheEncodedArgumentsToTheMethodArgumentsArray)
+	s.Step(`^I add a method call with the ([^"]*) account, the current application, suggested params, on complete "([^"]*)", current transaction signer, current method arguments\.$`, addMethodCall)
+	s.Step(`^I add a method call with the ([^"]*) account, the current application, suggested params, on complete "([^"]*)", current transaction signer, current method arguments, approval-program "([^"]*)", clear-program "([^"]*)"\.$`, addMethodCallForUpdate)
+	s.Step(`^I add a method call with the ([^"]*) account, the current application, suggested params, on complete "([^"]*)", current transaction signer, current method arguments, approval-program "([^"]*)", clear-program "([^"]*)", global-bytes (\d+), global-ints (\d+), local-bytes (\d+), local-ints (\d+), extra-pages (\d+)\.$`, addMethodCallForCreate)
+	s.Step(`^I add a nonced method call with the ([^"]*) account, the current application, suggested params, on complete "([^"]*)", current transaction signer, current method arguments\.$`, addMethodCallWithNonce)
+	s.Step(`^I add the nonce "([^"]*)"$`, iAddTheNonce)
+	s.Step(`^I build the transaction group with the composer\. If there is an error it is "([^"]*)"\.$`, buildTheTransactionGroupWithTheComposer)
+	s.Step(`^The composer should have a status of "([^"]*)"\.$`, theComposerShouldHaveAStatusOf)
+	s.Step(`^I gather signatures with the composer\.$`, iGatherSignaturesWithTheComposer)
+	s.Step(`^the base64 encoded signed transactions should equal "([^"]*)"$`, theBaseEncodedSignedTransactionsShouldEqual)
+	s.Step(`^I build a payment transaction with sender "([^"]*)", receiver "([^"]*)", amount (\d+), close remainder to "([^"]*)"$`, iBuildAPaymentTransactionWithSenderReceiverAmountCloseRemainderTo)
+	s.Step(`^I create a transaction with signer with the current transaction\.$`, iCreateATransactionWithSignerWithTheCurrentTransaction)
+	s.Step(`^I append the current transaction with signer to the method arguments array\.$`, iAppendTheCurrentTransactionWithSignerToTheMethodArgumentsArray)
+	s.Step(`^a dryrun response file "([^"]*)" and a transaction at index "([^"]*)"$`, aDryrunResponseFileAndATransactionAtIndex)
+	s.Step(`^calling app trace produces "([^"]*)"$`, callingAppTraceProduces)
+	s.Step(`^I append to my Method objects list in the case of a non-empty signature "([^"]*)"$`, iAppendToMyMethodObjectsListInTheCaseOfANonemptySignature)
+	s.Step(`^I create an Interface object from my Method objects list$`, iCreateAnInterfaceObjectFromMyMethodObjectsList)
+	s.Step(`^I create a Contract object from my Method objects list$`, iCreateAContractObjectFromMyMethodObjectsList)
+	s.Step(`^I get the method from the Interface by name "([^"]*)"$`, iGetTheMethodFromTheInterfaceByName)
+	s.Step(`^I get the method from the Contract by name "([^"]*)"$`, iGetTheMethodFromTheContractByName)
+	s.Step(`^the produced method signature should equal "([^"]*)"\. If there is an error it begins with "([^"]*)"$`, theProducedMethodSignatureShouldEqualIfThereIsAnErrorItBeginsWith)
+	s.Step(`^a source map json file "([^"]*)"$`, aSourceMapJsonFile)
+	s.Step(`^the string composed of pc:line number equals "([^"]*)"$`, theStringComposedOfPclineNumberEquals)
+	s.Step(`^I compile a teal program "([^"]*)" with mapping enabled$`, iCompileATealProgramWithMappingEnabled)
+	s.Step(`^the resulting source map is the same as the json "([^"]*)"$`, theResultingSourceMapIsTheSameAsTheJson)
+	s.Step(`^getting the line associated with a pc "([^"]*)" equals "([^"]*)"$`, gettingTheLineAssociatedWithAPcEquals)
+	s.Step(`^getting the last pc associated with a line "([^"]*)" equals "([^"]*)"$`, gettingTheLastPcAssociatedWithALineEquals)
+	s.Step(`^a base64 encoded program bytes for heuristic sanity check "([^"]*)"$`, takeB64encodedBytes)
+	s.Step(`^I start heuristic sanity check over the bytes$`, heuristicCheckOverBytes)
+	s.Step(`^if the heuristic sanity check throws an error, the error contains "([^"]*)"$`, checkErrorIfMatching)
 
 	s.BeforeScenario(func(interface{}) {
 		stxObj = types.SignedTxn{}
+		abiMethods = nil
 		kcl.RenewWalletHandle(handle)
 	})
 }
@@ -445,24 +502,6 @@ func mnForSk(mn string) error {
 	}
 	return err
 }
-
-func createTxn() error {
-	var err error
-	paramsToUse := types.SuggestedParams{
-		Fee:             types.MicroAlgos(fee),
-		GenesisID:       gen,
-		GenesisHash:     gh,
-		FirstRoundValid: types.Round(fv),
-		LastRoundValid:  types.Round(lv),
-		FlatFee:         false,
-	}
-	txn, err = future.MakePaymentTxn(a.String(), to, amt, note, close, paramsToUse)
-	if err != nil {
-		return err
-	}
-	return err
-}
-
 func msigAddresses(addresses string) error {
 	var err error
 	addrlist := strings.Fields(addresses)
@@ -501,7 +540,7 @@ func createMsigTxn() error {
 		FlatFee:         false,
 	}
 	msigaddr, _ := msig.Address()
-	txn, err = future.MakePaymentTxn(msigaddr.String(), to, amt, note, close, paramsToUse)
+	txn, err = transaction.MakePaymentTxn(msigaddr.String(), to, amt, note, close, paramsToUse)
 	if err != nil {
 		return err
 	}
@@ -520,7 +559,7 @@ func createMsigTxnZeroFee() error {
 		FlatFee:         true,
 	}
 	msigaddr, _ := msig.Address()
-	txn, err = future.MakePaymentTxn(msigaddr.String(), to, amt, note, close, paramsToUse)
+	txn, err = transaction.MakePaymentTxn(msigaddr.String(), to, amt, note, close, paramsToUse)
 	if err != nil {
 		return err
 	}
@@ -587,7 +626,7 @@ func equalMsigGolden(golden string) error {
 }
 
 func aclV() error {
-	v, err := acl.Versions()
+	v, err := aclv2.Versions().Do(context.Background())
 	if err != nil {
 		return err
 	}
@@ -604,30 +643,18 @@ func v1InVersions() error {
 	return fmt.Errorf("v1 not found")
 }
 
+func v2InVersions() error {
+	for _, b := range versions {
+		if b == "v2" {
+			return nil
+		}
+	}
+	return fmt.Errorf("v2 not found")
+}
+
 func kclV() error {
 	v, err := kcl.Version()
 	versions = v.Versions
-	return err
-}
-
-func getStatus() error {
-	var err error
-	status, err = acl.Status()
-	lastRound = status.LastRound
-	return err
-}
-
-func statusAfterBlock() error {
-	var err error
-	statusAfter, err = acl.StatusAfterBlock(lastRound)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func block() error {
-	_, err := acl.Block(status.LastRound)
 	return err
 }
 
@@ -723,6 +750,16 @@ func genKeyKmd() error {
 	return nil
 }
 
+func genRekeyKmd() error {
+	p, err := kcl.GenerateKey(handle)
+	if err != nil {
+		return err
+	}
+	rekey = p.Address
+	initializeAccount(rekey)
+	return nil
+}
+
 func keyInWallet() error {
 	resp, err := kcl.ListKeys(handle)
 	if err != nil {
@@ -786,27 +823,24 @@ func kmdClient() error {
 	return err
 }
 
-func algodClient() error {
-	algodToken := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	algodAddress := "http://localhost:" + "60000"
-	var err error
-	acl, err = algod.MakeClient(algodAddress, algodToken)
-	if err != nil {
-		return err
-	}
-	_, err = acl.StatusAfterBlock(1)
-	return err
-}
-
 func algodClientV2() error {
 	algodToken := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	algodAddress := "http://localhost:" + "60000"
 	var err error
 	aclv2, err = algodV2.MakeClient(algodAddress, algodToken)
+	algodV2client = aclv2
 	if err != nil {
 		return err
 	}
 	_, err = aclv2.StatusAfterBlock(1).Do(context.Background())
+	return err
+}
+
+func indexerClientV2() error {
+	indexerAddress := "http://localhost:" + "59999"
+	var err error
+	iclv2, err = indexerV2.MakeClient(indexerAddress, "")
+	indexerV2client = iclv2
 	return err
 }
 
@@ -832,7 +866,8 @@ func walletInfo() error {
 	return err
 }
 
-func defaultTxn(iamt int, inote string) error {
+// Helper function for making default transactions.
+func defaultTxnWithAddress(iamt int, inote string, senderAddress string) error {
 	var err error
 	if inote != "none" {
 		note, err = base64.StdEncoding.DecodeString(inote)
@@ -847,14 +882,18 @@ func defaultTxn(iamt int, inote string) error {
 	}
 
 	amt = uint64(iamt)
-	pk = accounts[0]
-	params, err := acl.BuildSuggestedParams()
+	pk = senderAddress
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
 	lastRound = uint64(params.FirstRoundValid)
-	txn, err = future.MakePaymentTxn(accounts[0], accounts[1], amt, note, "", params)
+	txn, err = transaction.MakePaymentTxn(senderAddress, accounts[1], amt, note, "", params)
 	return err
+}
+
+func defaultTxn(iamt int, inote string) error {
+	return defaultTxnWithAddress(iamt, inote, accounts[0])
 }
 
 func defaultMsigTxn(iamt int, inote string) error {
@@ -888,7 +927,7 @@ func defaultMsigTxn(iamt int, inote string) error {
 	if err != nil {
 		return err
 	}
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
@@ -897,7 +936,7 @@ func defaultMsigTxn(iamt int, inote string) error {
 	if err != nil {
 		return err
 	}
-	txn, err = future.MakePaymentTxn(addr.String(), accounts[1], amt, note, "", params)
+	txn, err = transaction.MakePaymentTxn(addr.String(), accounts[1], amt, note, "", params)
 	if err != nil {
 		return err
 	}
@@ -914,73 +953,38 @@ func getSk() error {
 }
 
 func sendTxn() error {
-	tx, err := acl.SendRawTransaction(stx)
+	tx, err := aclv2.SendRawTransaction(stx).Do(context.Background())
 	if err != nil {
 		return err
 	}
-	txid = tx.TxID
+	txid = tx
 	return nil
 }
 
 func sendTxnKmd() error {
-	tx, err := acl.SendRawTransaction(stxKmd)
-	if err != nil {
-		e = true
-	}
-	txid = tx.TxID
-	return nil
+	var err error
+	txid, err = aclv2.SendRawTransaction(stxKmd).Do(context.Background())
+	return err
 }
 
 func sendTxnKmdFailureExpected() error {
-	tx, err := acl.SendRawTransaction(stxKmd)
+	tx, err := aclv2.SendRawTransaction(stxKmd).Do(context.Background())
 	if err == nil {
 		e = false
 		return fmt.Errorf("expected an error when sending kmd-signed transaction but no error occurred")
 	}
 	e = true
-	txid = tx.TxID
+	txid = tx
 	return nil
 }
 
 func sendMsigTxn() error {
-	_, err := acl.SendRawTransaction(stx)
-
+	_, err := aclv2.SendRawTransaction(stx).Do(context.Background())
 	if err != nil {
 		e = true
 	}
 
 	return nil
-}
-
-func checkTxn() error {
-	_, err := acl.PendingTransactionInformation(txid)
-	if err != nil {
-		return err
-	}
-	_, err = acl.StatusAfterBlock(lastRound + 2)
-	if err != nil {
-		return err
-	}
-	if txn.Sender.String() != "" && txn.Sender.String() != "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ" {
-		_, err = acl.TransactionInformation(txn.Sender.String(), txid)
-	} else {
-		_, err = acl.TransactionInformation(backupTxnSender, txid)
-	}
-	if err != nil {
-		return err
-	}
-	_, err = acl.TransactionByID(txid)
-	return err
-}
-
-func txnbyID() error {
-	var err error
-	_, err = acl.StatusAfterBlock(lastRound + 2)
-	if err != nil {
-		return err
-	}
-	_, err = acl.TransactionByID(txid)
-	return err
 }
 
 func txnFail() error {
@@ -1009,6 +1013,9 @@ func signBothEqual() error {
 func signMsigKmd() error {
 	kcl.ImportMultisig(handle, msig.Version, msig.Threshold, msig.Pks)
 	decoded, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(pk)
+	if err != nil {
+		return fmt.Errorf("signMsigKmd: %w", err)
+	}
 	s, err := kcl.MultisigSignTransaction(handle, walletPswd, txn, decoded[:32], types.MultisigSig{})
 	if err != nil {
 		return err
@@ -1034,131 +1041,14 @@ func signMsigBothEqual() error {
 
 }
 
-func readTxn(encodedTxn string, inum string) error {
-	encodedBytes, err := base64.StdEncoding.DecodeString(encodedTxn)
-	if err != nil {
-		return err
-	}
-	path, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	num = inum
-	path = filepath.Dir(filepath.Dir(path)) + "/temp/old" + num + ".tx"
-	err = ioutil.WriteFile(path, encodedBytes, 0644)
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	err = msgpack.Decode(data, &stxObj)
-	return err
-}
-
-func writeTxn() error {
-	path, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	path = filepath.Dir(filepath.Dir(path)) + "/temp/raw" + num + ".tx"
-	data := msgpack.Encode(stxObj)
-	err = ioutil.WriteFile(path, data, 0644)
-	return err
-}
-
-func checkEnc() error {
-	path, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	pathold := filepath.Dir(filepath.Dir(path)) + "/temp/old" + num + ".tx"
-	dataold, err := ioutil.ReadFile(pathold)
-
-	pathnew := filepath.Dir(filepath.Dir(path)) + "/temp/raw" + num + ".tx"
-	datanew, err := ioutil.ReadFile(pathnew)
-
-	if bytes.Equal(dataold, datanew) {
-		return nil
-	}
-	return fmt.Errorf("should be equal")
-}
-
-func createSaveTxn() error {
-	var err error
-
-	amt = 100000
-	pk = accounts[0]
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid)
-	txn, err = future.MakePaymentTxn(accounts[0], accounts[1], amt, note, "", params)
-	if err != nil {
-		return err
-	}
-
-	path, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	path = filepath.Dir(filepath.Dir(path)) + "/temp/txn.tx"
-	data := msgpack.Encode(txn)
-	err = ioutil.WriteFile(path, data, 0644)
-	return err
-}
-
 func nodeHealth() error {
-	err := acl.HealthCheck()
+	err := aclv2.HealthCheck().Do(context.Background())
 	return err
 }
 
 func ledger() error {
-	_, err := acl.LedgerSupply()
+	_, err := aclv2.Supply().Do(context.Background())
 	return err
-}
-
-func txnsByAddrRound() error {
-	lr, err := acl.Status()
-	if err != nil {
-		return err
-	}
-	_, err = acl.TransactionsByAddr(accounts[0], 1, lr.LastRound)
-	return err
-}
-
-func txnsByAddrOnly() error {
-	_, err := acl.TransactionsByAddrLimit(accounts[0], 10)
-	return err
-}
-
-func txnsByAddrDate() error {
-	fromDate := time.Now().Format("2006-01-02")
-	_, err := acl.TransactionsByAddrForDate(accounts[0], fromDate, fromDate)
-	return err
-}
-
-func txnsPending() error {
-	_, err := acl.GetPendingTransactions(10)
-	return err
-}
-
-func suggestedParams() error {
-	var err error
-	sugParams, err = acl.BuildSuggestedParams()
-	return err
-}
-
-func suggestedFee() error {
-	var err error
-	sugFee, err = acl.SuggestedFee()
-	return err
-}
-
-func checkSuggested() error {
-	if uint64(sugParams.Fee) != sugFee.Fee {
-		return fmt.Errorf("suggested fee from params should be equal to suggested fee")
-	}
-	return nil
 }
 
 func createBid() error {
@@ -1248,7 +1138,7 @@ func createTxnFlat() error {
 		LastRoundValid:  types.Round(lv),
 		FlatFee:         true,
 	}
-	txn, err = future.MakePaymentTxn(a.String(), to, amt, note, close, paramsToUse)
+	txn, err = transaction.MakePaymentTxn(a.String(), to, amt, note, close, paramsToUse)
 	if err != nil {
 		return err
 	}
@@ -1306,71 +1196,50 @@ func checkAlgos(ma int) error {
 	return nil
 }
 
-func accInfo() error {
-	_, err := acl.AccountInformation(accounts[0])
-	return err
-}
-
 func newAccInfo() error {
-	_, err := acl.AccountInformation(pk)
+	_, err := aclv2.AccountInformation(pk).Do(context.Background())
 	_, _ = kcl.DeleteKey(handle, walletPswd, pk)
 	return err
 }
 
-func keyregTxnParams(ifee, ifv, ilv int, igh, ivotekey, iselkey string, ivotefst, ivotelst, ivotekd int, igen, inote string) error {
-	var err error
-	if inote != "none" {
-		note, err = base64.StdEncoding.DecodeString(inote)
-		if err != nil {
-			return err
-		}
-	} else {
-		note, err = base64.StdEncoding.DecodeString("")
-		if err != nil {
-			return err
-		}
-	}
-	gh, err = base64.StdEncoding.DecodeString(igh)
+func createKeyregWithStateProof(keyregType string) (err error) {
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
-	votekey = ivotekey
-	selkey = iselkey
-	fee = uint64(ifee)
-	fv = uint64(ifv)
-	lv = uint64(ilv)
-	votefst = uint64(ivotefst)
-	votelst = uint64(ivotelst)
-	votekd = uint64(ivotekd)
-	if igen != "none" {
-		gen = igen
-	} else {
-		gen = ""
+	lastRound = uint64(params.LastRoundValid)
+	pk = accounts[0]
+	if keyregType == "online" {
+		nonpart = false
+		votekey = "9mr13Ri8rFepxN3ghIUrZNui6LqqM5hEzB45Rri5lkU="
+		selkey = "dx717L3uOIIb/jr9OIyls1l5Ei00NFgRa380w7TnPr4="
+		votefst = uint64(0)
+		votelst = uint64(30001)
+		votekd = uint64(10000)
+		stateProofPK = "mYR0GVEObMTSNdsKM6RwYywHYPqVDqg3E4JFzxZOreH9NU8B+tKzUanyY8AQ144hETgSMX7fXWwjBdHz6AWk9w=="
+	} else if keyregType == "nonparticipation" {
+		nonpart = true
+		votekey = ""
+		selkey = ""
+		votefst = 0
+		votelst = 0
+		votekd = 0
+		stateProofPK = ""
+	} else if keyregType == "offline" {
+		nonpart = false
+		votekey = ""
+		selkey = ""
+		votefst = 0
+		votelst = 0
+		votekd = 0
+		stateProofPK = ""
 	}
-	if err != nil {
-		return err
-	}
-	return nil
-}
 
-func createKeyregTxn() (err error) {
-	paramsToUse := types.SuggestedParams{
-		Fee:             types.MicroAlgos(fee),
-		GenesisID:       gen,
-		GenesisHash:     gh,
-		FirstRoundValid: types.Round(fv),
-		LastRoundValid:  types.Round(lv),
-		FlatFee:         false,
-	}
-	txn, err = future.MakeKeyRegTxn(a.String(), note, paramsToUse, votekey, selkey, votefst, votelst, votekd)
+	txn, err = transaction.MakeKeyRegTxnWithStateProofKey(accounts[0], note, params, votekey, selkey, stateProofPK, votefst, votelst, votekd, nonpart)
 	if err != nil {
 		return err
 	}
-	return err
-}
 
-func getTxnsByCount(cnt int) error {
-	_, err := acl.TransactionsByAddrLimit(accounts[0], uint64(cnt))
 	return err
 }
 
@@ -1381,24 +1250,24 @@ func createAssetTestFixture() error {
 	assetTestFixture.AssetUnitName = "coins"
 	assetTestFixture.AssetURL = "http://test"
 	assetTestFixture.AssetMetadataHash = "fACPO4nRgO55j1ndAK3W6Sgc4APkcyFh"
-	assetTestFixture.ExpectedParams = models.AssetParams{}
-	assetTestFixture.QueriedParams = models.AssetParams{}
+	assetTestFixture.ExpectedParams = modelsV2.AssetParams{}
+	assetTestFixture.QueriedParams = modelsV2.AssetParams{}
 	assetTestFixture.LastTransactionIssued = types.Transaction{}
 	return nil
 }
 
-func convertTransactionAssetParamsToModelsAssetParam(input types.AssetParams) models.AssetParams {
-	result := models.AssetParams{
+func convertTransactionAssetParamsToModelsAssetParam(input types.AssetParams) modelsV2.AssetParams {
+	result := modelsV2.AssetParams{
 		Total:         input.Total,
-		Decimals:      input.Decimals,
+		Decimals:      uint64(input.Decimals),
 		DefaultFrozen: input.DefaultFrozen,
-		ManagerAddr:   input.Manager.String(),
-		ReserveAddr:   input.Reserve.String(),
-		FreezeAddr:    input.Freeze.String(),
-		ClawbackAddr:  input.Clawback.String(),
+		Manager:       input.Manager.String(),
+		Reserve:       input.Reserve.String(),
+		Freeze:        input.Freeze.String(),
+		Clawback:      input.Clawback.String(),
 		UnitName:      input.UnitName,
-		AssetName:     input.AssetName,
-		URL:           input.URL,
+		Name:          input.AssetName,
+		Url:           input.URL,
 		MetadataHash:  input.MetadataHash[:],
 	}
 	// input doesn't have Creator so that will remain empty
@@ -1409,7 +1278,7 @@ func assetCreateTxnHelper(issuance int, frozenState bool) error {
 	accountToUse := accounts[0]
 	assetTestFixture.Creator = accountToUse
 	creator := assetTestFixture.Creator
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
@@ -1424,7 +1293,7 @@ func assetCreateTxnHelper(issuance int, frozenState bool) error {
 	assetName := assetTestFixture.AssetName
 	url := assetTestFixture.AssetURL
 	metadataHash := assetTestFixture.AssetMetadataHash
-	assetCreateTxn, err := future.MakeAssetCreateTxn(creator, assetNote, params, assetIssuance, 0, frozenState, manager, reserve, freeze, clawback, unitName, assetName, url, metadataHash)
+	assetCreateTxn, err := transaction.MakeAssetCreateTxn(creator, assetNote, params, assetIssuance, 0, frozenState, manager, reserve, freeze, clawback, unitName, assetName, url, metadataHash)
 	assetTestFixture.LastTransactionIssued = assetCreateTxn
 	txn = assetCreateTxn
 	assetTestFixture.ExpectedParams = convertTransactionAssetParamsToModelsAssetParam(assetCreateTxn.AssetParams)
@@ -1443,7 +1312,7 @@ func defaultAssetCreateTxnWithDefaultFrozen(issuance int) error {
 
 func createNoManagerAssetReconfigure() error {
 	creator := assetTestFixture.Creator
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
@@ -1453,68 +1322,65 @@ func createNoManagerAssetReconfigure() error {
 	freeze := ""
 	clawback := ""
 	manager := creator // if this were "" as well, this wouldn't be a reconfigure txn, it would be a destroy txn
-	assetReconfigureTxn, err := future.MakeAssetConfigTxn(creator, assetNote, params, assetTestFixture.AssetIndex, manager, reserve, freeze, clawback, false)
+	assetReconfigureTxn, err := transaction.MakeAssetConfigTxn(creator, assetNote, params, assetTestFixture.AssetIndex, manager, reserve, freeze, clawback, false)
 	assetTestFixture.LastTransactionIssued = assetReconfigureTxn
 	txn = assetReconfigureTxn
 	// update expected params
-	assetTestFixture.ExpectedParams.ReserveAddr = reserve
-	assetTestFixture.ExpectedParams.FreezeAddr = freeze
-	assetTestFixture.ExpectedParams.ClawbackAddr = clawback
+	assetTestFixture.ExpectedParams.Reserve = reserve
+	assetTestFixture.ExpectedParams.Freeze = freeze
+	assetTestFixture.ExpectedParams.Clawback = clawback
 	return err
 }
 
 func createAssetDestroy() error {
 	creator := assetTestFixture.Creator
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
 	lastRound = uint64(params.FirstRoundValid)
 	assetNote := []byte(nil)
-	assetDestroyTxn, err := future.MakeAssetDestroyTxn(creator, assetNote, params, assetTestFixture.AssetIndex)
+	assetDestroyTxn, err := transaction.MakeAssetDestroyTxn(creator, assetNote, params, assetTestFixture.AssetIndex)
 	assetTestFixture.LastTransactionIssued = assetDestroyTxn
 	txn = assetDestroyTxn
 	// update expected params
-	assetTestFixture.ExpectedParams.ReserveAddr = ""
-	assetTestFixture.ExpectedParams.FreezeAddr = ""
-	assetTestFixture.ExpectedParams.ClawbackAddr = ""
-	assetTestFixture.ExpectedParams.ManagerAddr = ""
+	assetTestFixture.ExpectedParams.Reserve = ""
+	assetTestFixture.ExpectedParams.Freeze = ""
+	assetTestFixture.ExpectedParams.Clawback = ""
+	assetTestFixture.ExpectedParams.Manager = ""
 	return err
 }
 
 // used in getAssetIndex and similar to get the index of the most recently operated on asset
-func getMaxKey(numbers map[uint64]models.AssetParams) uint64 {
-	var maxNumber uint64
-	for n := range numbers {
-		maxNumber = n
-		break
-	}
-	for n := range numbers {
-		if n > maxNumber {
-			maxNumber = n
+func getMaxKey(numbers []modelsV2.Asset) uint64 {
+	var maxNumber uint64 = 0
+	for _, asset := range numbers {
+		idx := asset.Index
+		if idx > maxNumber {
+			maxNumber = idx
 		}
 	}
 	return maxNumber
 }
 
 func getAssetIndex() error {
-	accountResp, err := acl.AccountInformation(assetTestFixture.Creator)
+	accountResp, err := aclv2.AccountInformation(assetTestFixture.Creator).Do(context.Background())
 	if err != nil {
 		return err
 	}
 	// get most recent asset index
-	assetTestFixture.AssetIndex = getMaxKey(accountResp.AssetParams)
+	assetTestFixture.AssetIndex = getMaxKey(accountResp.CreatedAssets)
 	return nil
 }
 
 func getAssetInfo() error {
-	response, err := acl.AssetInformation(assetTestFixture.AssetIndex)
-	assetTestFixture.QueriedParams = response
+	response, err := aclv2.GetAssetByID(assetTestFixture.AssetIndex).Do(context.Background())
+	assetTestFixture.QueriedParams = response.Params
 	return err
 }
 
 func failToGetAssetInfo() error {
-	_, err := acl.AssetInformation(assetTestFixture.AssetIndex)
+	_, err := aclv2.GetAssetByID(assetTestFixture.AssetIndex).Do(context.Background())
 	if err != nil {
 		return nil
 	}
@@ -1525,20 +1391,20 @@ func failToGetAssetInfo() error {
 func checkExpectedVsActualAssetParams() error {
 	expectedParams := assetTestFixture.ExpectedParams
 	actualParams := assetTestFixture.QueriedParams
-	nameMatch := expectedParams.AssetName == actualParams.AssetName
+	nameMatch := expectedParams.Name == actualParams.Name
 	if !nameMatch {
 		return fmt.Errorf("expected asset name was %v but actual asset name was %v",
-			expectedParams.AssetName, actualParams.AssetName)
+			expectedParams.Name, actualParams.Name)
 	}
 	unitMatch := expectedParams.UnitName == actualParams.UnitName
 	if !unitMatch {
 		return fmt.Errorf("expected unit name was %v but actual unit name was %v",
 			expectedParams.UnitName, actualParams.UnitName)
 	}
-	urlMatch := expectedParams.URL == actualParams.URL
+	urlMatch := expectedParams.Url == actualParams.Url
 	if !urlMatch {
 		return fmt.Errorf("expected URL was %v but actual URL was %v",
-			expectedParams.URL, actualParams.URL)
+			expectedParams.Url, actualParams.Url)
 	}
 	hashMatch := reflect.DeepEqual(expectedParams.MetadataHash, actualParams.MetadataHash)
 	if !hashMatch {
@@ -1555,37 +1421,47 @@ func checkExpectedVsActualAssetParams() error {
 		return fmt.Errorf("expected default frozen state %v but actual default frozen state was %v",
 			expectedParams.DefaultFrozen, actualParams.DefaultFrozen)
 	}
-	managerMatch := expectedParams.ManagerAddr == actualParams.ManagerAddr
+	managerMatch := expectedParams.Manager == actualParams.Manager
 	if !managerMatch {
 		return fmt.Errorf("expected asset manager was %v but actual asset manager was %v",
-			expectedParams.ManagerAddr, actualParams.ManagerAddr)
+			expectedParams.Manager, actualParams.Manager)
 	}
-	reserveMatch := expectedParams.ReserveAddr == actualParams.ReserveAddr
+	reserveMatch := expectedParams.Reserve == actualParams.Reserve
 	if !reserveMatch {
 		return fmt.Errorf("expected asset reserve was %v but actual asset reserve was %v",
-			expectedParams.ReserveAddr, actualParams.ReserveAddr)
+			expectedParams.Reserve, actualParams.Reserve)
 	}
-	freezeMatch := expectedParams.FreezeAddr == actualParams.FreezeAddr
+	freezeMatch := expectedParams.Freeze == actualParams.Freeze
 	if !freezeMatch {
 		return fmt.Errorf("expected freeze manager was %v but actual freeze manager was %v",
-			expectedParams.FreezeAddr, actualParams.FreezeAddr)
+			expectedParams.Freeze, actualParams.Freeze)
 	}
-	clawbackMatch := expectedParams.ClawbackAddr == actualParams.ClawbackAddr
+	clawbackMatch := expectedParams.Clawback == actualParams.Clawback
 	if !clawbackMatch {
 		return fmt.Errorf("expected revocation (clawback) manager was %v but actual revocation manager was %v",
-			expectedParams.ClawbackAddr, actualParams.ClawbackAddr)
+			expectedParams.Clawback, actualParams.Clawback)
 	}
 	return nil
 }
 
+func findAssetID(assets []modelsV2.AssetHolding, assetID uint64) (foundAsset modelsV2.AssetHolding, err error) {
+	for _, asset := range assets {
+		if asset.AssetId == assetID {
+			return asset, nil
+		}
+	}
+	return modelsV2.AssetHolding{}, fmt.Errorf("asset ID %d was not found", assetID)
+}
+
 func theCreatorShouldHaveAssetsRemaining(expectedBal int) error {
 	expectedBalance := uint64(expectedBal)
-	accountResp, err := acl.AccountInformation(assetTestFixture.Creator)
+	accountResp, err := aclv2.AccountInformation(assetTestFixture.Creator).Do(context.Background())
 	if err != nil {
 		return err
 	}
-	holding, ok := accountResp.Assets[assetTestFixture.AssetIndex]
-	if !ok {
+	// Find asset ID
+	holding, err := findAssetID(accountResp.Assets, assetTestFixture.AssetIndex)
+	if err != nil {
 		return fmt.Errorf("attempted to get balance of account %v for creator %v and index %v, but no balance was found for that index", assetTestFixture.Creator, assetTestFixture.Creator, assetTestFixture.AssetIndex)
 	}
 	if holding.Amount != expectedBalance {
@@ -1596,13 +1472,13 @@ func theCreatorShouldHaveAssetsRemaining(expectedBal int) error {
 
 func createAssetAcceptanceForSecondAccount() error {
 	accountToUse := accounts[1]
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
 	lastRound = uint64(params.FirstRoundValid)
 	assetNote := []byte(nil)
-	assetAcceptanceTxn, err := future.MakeAssetAcceptanceTxn(accountToUse, assetNote, params, assetTestFixture.AssetIndex)
+	assetAcceptanceTxn, err := transaction.MakeAssetAcceptanceTxn(accountToUse, assetNote, params, assetTestFixture.AssetIndex)
 	assetTestFixture.LastTransactionIssued = assetAcceptanceTxn
 	txn = assetAcceptanceTxn
 	return err
@@ -1611,7 +1487,7 @@ func createAssetAcceptanceForSecondAccount() error {
 func createAssetTransferTransactionToSecondAccount(amount int) error {
 	recipient := accounts[1]
 	creator := assetTestFixture.Creator
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
@@ -1619,7 +1495,7 @@ func createAssetTransferTransactionToSecondAccount(amount int) error {
 	closeAssetsTo := ""
 	lastRound = uint64(params.FirstRoundValid)
 	assetNote := []byte(nil)
-	assetAcceptanceTxn, err := future.MakeAssetTransferTxn(creator, recipient, sendAmount, assetNote, params, closeAssetsTo, assetTestFixture.AssetIndex)
+	assetAcceptanceTxn, err := transaction.MakeAssetTransferTxn(creator, recipient, sendAmount, assetNote, params, closeAssetsTo, assetTestFixture.AssetIndex)
 	assetTestFixture.LastTransactionIssued = assetAcceptanceTxn
 	txn = assetAcceptanceTxn
 	return err
@@ -1628,7 +1504,7 @@ func createAssetTransferTransactionToSecondAccount(amount int) error {
 func createAssetTransferTransactionFromSecondAccountToCreator(amount int) error {
 	recipient := assetTestFixture.Creator
 	sender := accounts[1]
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
@@ -1636,7 +1512,7 @@ func createAssetTransferTransactionFromSecondAccountToCreator(amount int) error 
 	closeAssetsTo := ""
 	lastRound = uint64(params.FirstRoundValid)
 	assetNote := []byte(nil)
-	assetAcceptanceTxn, err := future.MakeAssetTransferTxn(sender, recipient, sendAmount, assetNote, params, closeAssetsTo, assetTestFixture.AssetIndex)
+	assetAcceptanceTxn, err := transaction.MakeAssetTransferTxn(sender, recipient, sendAmount, assetNote, params, closeAssetsTo, assetTestFixture.AssetIndex)
 	assetTestFixture.LastTransactionIssued = assetAcceptanceTxn
 	txn = assetAcceptanceTxn
 	return err
@@ -1645,13 +1521,13 @@ func createAssetTransferTransactionFromSecondAccountToCreator(amount int) error 
 // sets up a freeze transaction, with freeze state `setting` against target account `target`
 // assumes creator is asset freeze manager
 func freezeTransactionHelper(target string, setting bool) error {
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
 	lastRound = uint64(params.FirstRoundValid)
 	assetNote := []byte(nil)
-	assetFreezeOrUnfreezeTxn, err := future.MakeAssetFreezeTxn(assetTestFixture.Creator, assetNote, params, assetTestFixture.AssetIndex, target, setting)
+	assetFreezeOrUnfreezeTxn, err := transaction.MakeAssetFreezeTxn(assetTestFixture.Creator, assetNote, params, assetTestFixture.AssetIndex, target, setting)
 	assetTestFixture.LastTransactionIssued = assetFreezeOrUnfreezeTxn
 	txn = assetFreezeOrUnfreezeTxn
 	return err
@@ -1666,259 +1542,22 @@ func createUnfreezeTransactionTargetingSecondAccount() error {
 }
 
 func createRevocationTransaction(amount int) error {
-	params, err := acl.BuildSuggestedParams()
+	params, err := aclv2.SuggestedParams().Do(context.Background())
 	if err != nil {
 		return err
 	}
 	lastRound = uint64(params.FirstRoundValid)
 	revocationAmount := uint64(amount)
 	assetNote := []byte(nil)
-	assetRevokeTxn, err := future.MakeAssetRevocationTxn(assetTestFixture.Creator, accounts[1], revocationAmount, assetTestFixture.Creator, assetNote, params, assetTestFixture.AssetIndex)
+	assetRevokeTxn, err := transaction.MakeAssetRevocationTxn(assetTestFixture.Creator, accounts[1], revocationAmount, assetTestFixture.Creator, assetNote, params, assetTestFixture.AssetIndex)
 	assetTestFixture.LastTransactionIssued = assetRevokeTxn
 	txn = assetRevokeTxn
-	return err
-}
-
-func createContractTestFixture() error {
-	contractTestFixture.split = templates.Split{}
-	contractTestFixture.htlc = templates.HTLC{}
-	contractTestFixture.periodicPay = templates.PeriodicPayment{}
-	contractTestFixture.limitOrder = templates.LimitOrder{}
-	contractTestFixture.dynamicFee = templates.DynamicFee{}
-	contractTestFixture.activeAddress = ""
-	contractTestFixture.htlcPreImage = ""
-	contractTestFixture.limitOrderN = 0
-	contractTestFixture.limitOrderD = 0
-	contractTestFixture.limitOrderMin = 0
-	contractTestFixture.splitN = 0
-	contractTestFixture.splitD = 0
-	contractTestFixture.splitMin = 0
-	contractTestFixture.contractFundAmount = 0
-	contractTestFixture.periodicPayPeriod = 0
-	return nil
-}
-
-func aSplitContractWithRatioToAndMinimumPayment(ratn, ratd, minPay int) error {
-	owner := accounts[0]
-	receivers := [2]string{accounts[0], accounts[1]}
-	expiryRound := uint64(100)
-	maxFee := uint64(5000000)
-	contractTestFixture.splitN = uint64(ratn)
-	contractTestFixture.splitD = uint64(ratd)
-	contractTestFixture.splitMin = uint64(minPay)
-	c, err := templates.MakeSplit(owner, receivers[0], receivers[1], uint64(ratn), uint64(ratd), expiryRound, uint64(minPay), maxFee)
-	contractTestFixture.split = c
-	contractTestFixture.activeAddress = c.GetAddress()
-	// add much more than enough to evenly split
-	contractTestFixture.contractFundAmount = uint64(minPay*(ratd+ratn)) * 10
-	return err
-}
-
-func iSendTheSplitTransactions() error {
-	amount := contractTestFixture.splitMin * (contractTestFixture.splitN + contractTestFixture.splitD)
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid)
-	txnBytes, err := templates.GetSplitFundsTransaction(contractTestFixture.split.GetProgram(), amount, params)
-	if err != nil {
-		return err
-	}
-	txIdResponse, err := acl.SendRawTransaction(txnBytes)
-	txid = txIdResponse.TxID
-	// hack to make checkTxn work
-	backupTxnSender = contractTestFixture.split.GetAddress()
-	return err
-}
-
-func anHTLCContractWithHashPreimage(preImage string) error {
-	hashImage := sha256.Sum256([]byte(preImage))
-	owner := accounts[0]
-	receiver := accounts[1]
-	hashFn := "sha256"
-	expiryRound := uint64(100)
-	maxFee := uint64(1000000)
-	hashB64 := base64.StdEncoding.EncodeToString(hashImage[:])
-	c, err := templates.MakeHTLC(owner, receiver, hashFn, hashB64, expiryRound, maxFee)
-	contractTestFixture.htlc = c
-	contractTestFixture.htlcPreImage = preImage
-	contractTestFixture.activeAddress = c.GetAddress()
-	contractTestFixture.contractFundAmount = 100000000
-	return err
-}
-
-func iFundTheContractAccount() error {
-	// send the requested money to c.address
-	amount := contractTestFixture.contractFundAmount
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid)
-	txn, err = future.MakePaymentTxn(accounts[0], contractTestFixture.activeAddress, amount, nil, "", params)
-	if err != nil {
-		return err
-	}
-	err = signKmd()
-	if err != nil {
-		return err
-	}
-	err = sendTxnKmd()
-	if err != nil {
-		return err
-	}
-	return checkTxn()
-}
-
-// used in HTLC
-func iClaimTheAlgosHTLC() error {
-	preImage := contractTestFixture.htlcPreImage
-	preImageAsArgument := []byte(preImage)
-	args := make([][]byte, 1)
-	args[0] = preImageAsArgument
-	receiver := accounts[1] // was set as receiver in setup step
-	var blankMultisig crypto.MultisigAccount
-	lsig, err := crypto.MakeLogicSig(contractTestFixture.htlc.GetProgram(), args, nil, blankMultisig)
-	if err != nil {
-		return err
-	}
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid)
-	txn, err = future.MakePaymentTxn(contractTestFixture.activeAddress, receiver, 0, nil, receiver, params)
-	if err != nil {
-		return err
-	}
-	txn.Receiver = types.Address{} //txn must have no receiver but MakePayment disallows this.
-	txid, stx, err = crypto.SignLogicsigTransaction(lsig, txn)
-	if err != nil {
-		return err
-	}
-	return sendTxn()
-}
-
-func aPeriodicPaymentContractWithWithdrawingWindowAndPeriod(withdrawWindow, period int) error {
-	receiver := accounts[0]
-	amount := uint64(10000000)
-	// add far more than enough to withdraw
-	contractTestFixture.contractFundAmount = amount * 10
-	expiryRound := uint64(100)
-	maxFee := uint64(1000000000000)
-	contract, err := templates.MakePeriodicPayment(receiver, amount, uint64(withdrawWindow), uint64(period), expiryRound, maxFee)
-	contractTestFixture.activeAddress = contract.GetAddress()
-	contractTestFixture.periodicPay = contract
-	contractTestFixture.periodicPayPeriod = uint64(period)
-	return err
-}
-
-func iClaimThePeriodicPayment() error {
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	txnFirstValid := uint64(params.FirstRoundValid)
-	remainder := txnFirstValid % contractTestFixture.periodicPayPeriod
-	txnFirstValid += remainder
-	stx, err = templates.GetPeriodicPaymentWithdrawalTransaction(contractTestFixture.periodicPay.GetProgram(), txnFirstValid, uint64(params.Fee), params.GenesisHash)
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid) // used in send/checkTxn
-	return sendTxn()
-}
-
-func aLimitOrderContractWithParameters(ratn, ratd, minTrade int) error {
-	maxFee := uint64(100000)
-	expiryRound := uint64(100)
-	contractTestFixture.limitOrderN = uint64(ratn)
-	contractTestFixture.limitOrderD = uint64(ratd)
-	contractTestFixture.limitOrderMin = uint64(minTrade)
-	contractTestFixture.contractFundAmount = 2 * uint64(minTrade)
-	if contractTestFixture.contractFundAmount < 1000000 {
-		contractTestFixture.contractFundAmount = 1000000
-	}
-	contract, err := templates.MakeLimitOrder(accounts[0], assetTestFixture.AssetIndex, uint64(ratn), uint64(ratd), expiryRound, uint64(minTrade), maxFee)
-	contractTestFixture.activeAddress = contract.GetAddress()
-	contractTestFixture.limitOrder = contract
 	return err
 }
 
 // godog misreads the step for this function, so provide a handler for when it does so
 func iCreateATransactionTransferringAmountAssetsFromCreatorToASecondAccount() error {
 	return createAssetTransferTransactionToSecondAccount(500000)
-}
-
-func iSwapAssetsForAlgos() error {
-	exp, err := kcl.ExportKey(handle, walletPswd, accounts[1])
-	if err != nil {
-		return err
-	}
-	secretKey := exp.PrivateKey
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid)
-	contract := contractTestFixture.limitOrder.GetProgram()
-	microAlgoAmount := contractTestFixture.limitOrderMin + 1 // just over the minimum
-	assetAmount := microAlgoAmount * contractTestFixture.limitOrderN / contractTestFixture.limitOrderD
-	assetAmount += 1 // assetAmount initialized to absolute minimum, will fail greater-than check, so increment by one for a better deal
-	stx, err = contractTestFixture.limitOrder.GetSwapAssetsTransaction(assetAmount, microAlgoAmount, contract, secretKey, params)
-	if err != nil {
-		return err
-	}
-	// hack to make checktxn work
-	txn = types.Transaction{}
-	backupTxnSender = contractTestFixture.limitOrder.GetAddress() // used in checktxn
-	return sendTxn()
-}
-
-func aDynamicFeeContractWithAmount(amount int) error {
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid)
-	txnFirstValid := lastRound
-	txnLastValid := txnFirstValid + 10
-	contractTestFixture.contractFundAmount = uint64(10 * amount)
-	contract, err := templates.MakeDynamicFee(accounts[1], "", uint64(amount), txnFirstValid, txnLastValid)
-
-	contractTestFixture.dynamicFee = contract
-	contractTestFixture.activeAddress = contract.GetAddress()
-	return err
-}
-
-func iSendTheDynamicFeeTransaction() error {
-	params, err := acl.BuildSuggestedParams()
-	if err != nil {
-		return err
-	}
-	lastRound = uint64(params.FirstRoundValid)
-	exp, err := kcl.ExportKey(handle, walletPswd, accounts[0])
-	if err != nil {
-		return err
-	}
-	secretKeyOne := exp.PrivateKey
-	initialTxn, lsig, err := templates.SignDynamicFee(contractTestFixture.dynamicFee.GetProgram(), secretKeyOne, params.GenesisHash)
-	if err != nil {
-		return err
-	}
-	exp, err = kcl.ExportKey(handle, walletPswd, accounts[1])
-	if err != nil {
-		return err
-	}
-	secretKeyTwo := exp.PrivateKey
-	groupTxnBytes, err := templates.GetDynamicFeeTransactions(initialTxn, lsig, secretKeyTwo, uint64(params.Fee))
-	// hack to make checkTxn work
-	txn = initialTxn
-	// end hack to make checkTxn work
-	response, err := acl.SendRawTransaction(groupTxnBytes)
-	txid = response.TxID
-	return err
 }
 
 func baseEncodedDataToSign(dataEnc string) (err error) {
@@ -2003,6 +1642,28 @@ func tealCheckCompile(status int, result string, hash string) error {
 	return nil
 }
 
+func tealCheckCompileAgainstFile(expectedFile string) error {
+	if len(expectedFile) == 0 {
+		return fmt.Errorf("empty teal program file name")
+	}
+
+	expectedTeal, err := loadResource(expectedFile)
+	if err != nil {
+		return err
+	}
+
+	actualTeal, err := base64.StdEncoding.DecodeString(tealCompleResult.response.Result)
+	if err != nil {
+		return err
+	}
+
+	if !bytes.Equal(actualTeal, expectedTeal) {
+		return fmt.Errorf("Actual program does not match expected")
+	}
+
+	return nil
+}
+
 func tealDryrun(kind string, filename string) (err error) {
 	if len(filename) == 0 {
 		return fmt.Errorf("empty teal program file name")
@@ -2055,6 +1716,846 @@ func tealCheckDryrun(result string) error {
 
 	if msgs[len(msgs)-1] != result {
 		return fmt.Errorf("dryrun status %s != %s", result, msgs[len(msgs)-1])
+	}
+	return nil
+}
+
+func createMethodObjectFromSignature(methodSig string) error {
+	abiMethodLocal, err := abi.MethodFromSignature(methodSig)
+	abiMethod = abiMethodLocal
+	return err
+}
+
+func serializeMethodObjectIntoJson() error {
+	abiMethodJson, err := json.Marshal(abiMethod)
+	if err != nil {
+		return err
+	}
+
+	abiJsonString = string(abiMethodJson)
+	return nil
+}
+
+func checkSerializedMethodObject(jsonFile, loadedFrom string) error {
+	directory := path.Join("./features/unit/", loadedFrom)
+	jsons, err := loadMockJsons(jsonFile, directory)
+	if err != nil {
+		return err
+	}
+	correctJson := string(jsons[0])
+
+	var actualJson interface{}
+	err = json.Unmarshal([]byte(abiJsonString), &actualJson)
+	if err != nil {
+		return err
+	}
+
+	var expectedJson interface{}
+	err = json.Unmarshal([]byte(correctJson), &expectedJson)
+	if err != nil {
+		return err
+	}
+
+	if !reflect.DeepEqual(actualJson, expectedJson) {
+		return fmt.Errorf("json strings %s != %s", correctJson, abiJsonString)
+	}
+
+	return nil
+}
+
+func createMethodObjectFromProperties(name, firstArgType, secondArgType, returnType string) error {
+	args := []abi.Arg{
+		{Name: "", Type: firstArgType, Desc: ""},
+		{Name: "", Type: secondArgType, Desc: ""},
+	}
+	abiMethod = abi.Method{
+		Name:    name,
+		Desc:    "",
+		Args:    args,
+		Returns: abi.Return{Type: returnType, Desc: ""},
+	}
+	return nil
+}
+
+func createMethodObjectWithArgNames(name, firstArgName, firstArgType, secondArgName, secondArgType, returnType string) error {
+	args := []abi.Arg{
+		{Name: firstArgName, Type: firstArgType, Desc: ""},
+		{Name: secondArgName, Type: secondArgType, Desc: ""},
+	}
+	abiMethod = abi.Method{
+		Name:    name,
+		Desc:    "",
+		Args:    args,
+		Returns: abi.Return{Type: returnType, Desc: ""},
+	}
+	return nil
+}
+
+func createMethodObjectWithDescription(name, nameDesc, firstArgType, firstDesc, secondArgType, secondDesc, returnType string) error {
+	args := []abi.Arg{
+		{Name: "", Type: firstArgType, Desc: firstDesc},
+		{Name: "", Type: secondArgType, Desc: secondDesc},
+	}
+	abiMethod = abi.Method{
+		Name:    name,
+		Desc:    nameDesc,
+		Args:    args,
+		Returns: abi.Return{Type: returnType, Desc: ""},
+	}
+	return nil
+}
+
+func checkTxnCount(givenTxnCount int) error {
+	correctTxnCount := abiMethod.GetTxCount()
+	if correctTxnCount != givenTxnCount {
+		return fmt.Errorf("txn count %d != %d", givenTxnCount, correctTxnCount)
+	}
+	return nil
+}
+
+func checkMethodSelector(givenMethodSelector string) error {
+	correctMethodSelector := hex.EncodeToString(abiMethod.GetSelector())
+	if correctMethodSelector != givenMethodSelector {
+		return fmt.Errorf("method selector %s != %s", givenMethodSelector, correctMethodSelector)
+	}
+	return nil
+}
+
+func createInterfaceObject(name string, desc string) error {
+	abiInterface = abi.Interface{
+		Name:    name,
+		Desc:    desc,
+		Methods: []abi.Method{abiMethod},
+	}
+	return nil
+}
+
+func serializeInterfaceObjectIntoJson() error {
+	abiInterfaceJson, err := json.Marshal(abiInterface)
+	if err != nil {
+		return err
+	}
+
+	abiJsonString = string(abiInterfaceJson)
+	return nil
+}
+
+func createContractObject(name string, desc string) error {
+	abiContract = abi.Contract{
+		Name:     name,
+		Desc:     desc,
+		Networks: make(map[string]abi.ContractNetworkInfo),
+		Methods:  []abi.Method{abiMethod},
+	}
+	return nil
+}
+
+func iSetTheContractsAppIDToForTheNetwork(appID int, network string) error {
+	if appID < 0 {
+		return fmt.Errorf("App ID must not be negative. Got: %d", appID)
+	}
+	abiContract.Networks[network] = abi.ContractNetworkInfo{AppID: uint64(appID)}
+	return nil
+}
+
+func serializeContractObjectIntoJson() error {
+	abiContractJson, err := json.Marshal(abiContract)
+	if err != nil {
+		return err
+	}
+
+	abiJsonString = string(abiContractJson)
+	return nil
+}
+
+func iAppendToMyMethodObjectsListInTheCaseOfANonemptySignature(arg1 string) error {
+	if arg1 == "" {
+		return nil
+	}
+
+	meth, err := abi.MethodFromSignature(arg1)
+	abiMethods = append(abiMethods, meth)
+	return err
+}
+
+func iCreateAnInterfaceObjectFromMyMethodObjectsList() error {
+	abiInterface = abi.Interface{
+		Name:    "",
+		Methods: abiMethods,
+	}
+	return nil
+}
+
+func iGetTheMethodFromTheInterfaceByName(arg1 string) error {
+	abiMethod, globalErrForExamination = abiInterface.GetMethodByName(arg1)
+	return nil
+}
+
+func iCreateAContractObjectFromMyMethodObjectsList() error {
+	abiContract = abi.Contract{
+		Name:    "",
+		Methods: abiMethods,
+	}
+	return nil
+}
+
+func iGetTheMethodFromTheContractByName(arg1 string) error {
+	abiMethod, globalErrForExamination = abiContract.GetMethodByName(arg1)
+	return nil
+}
+
+func theProducedMethodSignatureShouldEqualIfThereIsAnErrorItBeginsWith(arg1, arg2 string) error {
+	if abiMethod.Name != "" {
+		if arg2 != "" {
+			return fmt.Errorf("expected error condition but got a method")
+		}
+		if arg1 != abiMethod.GetSignature() {
+			return fmt.Errorf("signature mismatch: %s != %s", arg1, abiMethod.GetSignature())
+		}
+	} else if globalErrForExamination != nil {
+		if arg2 == "" {
+			return fmt.Errorf("got error %s, expected no error", globalErrForExamination)
+		}
+
+		if !strings.Contains(globalErrForExamination.Error(), arg2) {
+			return fmt.Errorf("produced error does not match expected: %q does not contain %q", globalErrForExamination.Error(), arg2)
+		}
+
+	} else {
+		return fmt.Errorf("both abi method and error string are empty")
+	}
+
+	return nil
+}
+
+// equality helper methods
+func checkEqualMethods(method1, method2 abi.Method) bool {
+	if method1.Name != method2.Name || method1.Desc != method2.Desc {
+		return false
+	}
+
+	if method1.Returns.Type != method2.Returns.Type || method1.Returns.Desc != method2.Returns.Desc {
+		return false
+	}
+
+	if len(method1.Args) != len(method2.Args) {
+		return false
+	}
+
+	for i, arg1 := range method1.Args {
+		arg2 := method2.Args[i]
+		if arg1.Name != arg2.Name || arg1.Type != arg2.Type || arg1.Desc != arg2.Desc {
+			return false
+		}
+	}
+	return true
+}
+
+func checkEqualInterfaces(interface1, interface2 abi.Interface) bool {
+	if interface1.Name != interface2.Name || interface1.Desc != interface2.Desc {
+		return false
+	}
+
+	if len(interface1.Methods) != len(interface2.Methods) {
+		return false
+	}
+
+	for i, method := range interface1.Methods {
+		if !checkEqualMethods(method, interface2.Methods[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func checkEqualContracts(contract1, contract2 abi.Contract) bool {
+	if contract1.Name != contract2.Name || contract1.Desc != contract2.Desc {
+		return false
+	}
+
+	if len(contract1.Networks) != len(contract2.Networks) {
+		return false
+	}
+
+	for network, info1 := range contract1.Networks {
+		info2, ok := contract2.Networks[network]
+		if !ok || info1 != info2 {
+			return false
+		}
+	}
+
+	if len(contract1.Methods) != len(contract2.Methods) {
+		return false
+	}
+
+	for i, method := range contract1.Methods {
+		if !checkEqualMethods(method, contract2.Methods[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func deserializeMethodJson() error {
+	var deserializedMethod abi.Method
+	err := json.Unmarshal([]byte(abiJsonString), &deserializedMethod)
+	if err != nil {
+		return err
+	}
+
+	if !checkEqualMethods(deserializedMethod, abiMethod) {
+		return fmt.Errorf("Deserialized method does not match original method")
+	}
+	return nil
+}
+
+func deserializeInterfaceJson() error {
+	var deserializedInterface abi.Interface
+	err := json.Unmarshal([]byte(abiJsonString), &deserializedInterface)
+	if err != nil {
+		return err
+	}
+	if !checkEqualInterfaces(deserializedInterface, abiInterface) {
+		return fmt.Errorf("Deserialized interface does not match original interface")
+	}
+	return nil
+}
+
+func deserializeContractJson() error {
+	var deserializedContract abi.Contract
+	err := json.Unmarshal([]byte(abiJsonString), &deserializedContract)
+	if err != nil {
+		return err
+	}
+	if !checkEqualContracts(deserializedContract, abiContract) {
+		return fmt.Errorf("Deserialized contract does not match original contract")
+	}
+	return nil
+}
+
+func aNewAtomicTransactionComposer() error {
+	txComposer = transaction.AtomicTransactionComposer{}
+	return nil
+}
+
+func suggestedTransactionParameters(fee int, flatFee string, firstValid, LastValid int, genesisHash, genesisId string) error {
+	if flatFee != "true" && flatFee != "false" {
+		return fmt.Errorf("flatFee must be either 'true' or 'false'")
+	}
+
+	genHash, err := base64.StdEncoding.DecodeString(genesisHash)
+	if err != nil {
+		return err
+	}
+
+	sugParams = types.SuggestedParams{
+		Fee:             types.MicroAlgos(fee),
+		GenesisID:       genesisId,
+		GenesisHash:     genHash,
+		FirstRoundValid: types.Round(firstValid),
+		LastRoundValid:  types.Round(LastValid),
+		FlatFee:         flatFee == "true",
+	}
+
+	return nil
+}
+
+func anApplicationId(id int) error {
+	if id < 0 {
+		return fmt.Errorf("app id must be positive integer")
+	}
+
+	applicationId = uint64(id)
+	return nil
+}
+
+func iMakeATransactionSignerForTheAccount(accountType string) error {
+	if accountType == "signing" {
+		accountTxSigner = transaction.BasicAccountTransactionSigner{
+			Account: account,
+		}
+	} else if accountType == "transient" {
+		accountTxSigner = transaction.BasicAccountTransactionSigner{
+			Account: transientAccount,
+		}
+	}
+
+	return nil
+}
+
+func iCreateANewMethodArgumentsArray() error {
+	methodArgs = make([]interface{}, 0)
+	return nil
+}
+
+func iAppendTheEncodedArgumentsToTheMethodArgumentsArray(commaSeparatedB64Args string) error {
+	if len(commaSeparatedB64Args) == 0 {
+		return nil
+	}
+
+	b64Args := strings.Split(commaSeparatedB64Args, ",")
+	for _, b64Arg := range b64Args {
+		if strings.Contains(b64Arg, ":") {
+			// special case for inserting existing application ID
+			parts := strings.Split(b64Arg, ":")
+			if len(parts) != 2 || parts[0] != "ctxAppIdx" {
+				return fmt.Errorf("Cannot process argument: %s", b64Arg)
+			}
+			parsedIndex, err := strconv.ParseUint(parts[1], 10, 64)
+			if err != nil {
+				return err
+			}
+			if parsedIndex >= uint64(len(applicationIds)) {
+				return fmt.Errorf("Application index out of bounds: %d, number of app IDs is %d", parsedIndex, len(applicationIds))
+			}
+			abiUint64, err := abi.TypeOf("uint64")
+			if err != nil {
+				return err
+			}
+			encodedUint64, err := abiUint64.Encode(applicationIds[parsedIndex])
+			if err != nil {
+				return err
+			}
+			methodArgs = append(methodArgs, encodedUint64)
+			continue
+		}
+		decodedArg, err := base64.StdEncoding.DecodeString(b64Arg)
+		if err != nil {
+			return err
+		}
+		methodArgs = append(methodArgs, decodedArg)
+	}
+
+	return nil
+}
+
+func addMethodCall(accountType, strOnComplete string) error {
+	return addMethodCallHelper(accountType, strOnComplete, "", "", 0, 0, 0, 0, 0, false)
+}
+
+func addMethodCallForUpdate(accountType, strOnComplete, approvalProgram, clearProgram string) error {
+	return addMethodCallHelper(accountType, strOnComplete, approvalProgram, clearProgram, 0, 0, 0, 0, 0, false)
+}
+
+func addMethodCallForCreate(accountType, strOnComplete, approvalProgram, clearProgram string, globalBytes, globalInts, localBytes, localInts, extraPages int) error {
+	return addMethodCallHelper(accountType, strOnComplete, approvalProgram, clearProgram, globalBytes, globalInts, localBytes, localInts, extraPages, false)
+}
+
+func addMethodCallWithNonce(accountType, strOnComplete string) error {
+	return addMethodCallHelper(accountType, strOnComplete, "", "", 0, 0, 0, 0, 0, true)
+}
+
+func addMethodCallHelper(accountType, strOnComplete, approvalProgram, clearProgram string, globalBytes, globalInts, localBytes, localInts, extraPages int, useNonce bool) error {
+	var onComplete types.OnCompletion
+	switch strOnComplete {
+	case "create":
+		onComplete = types.NoOpOC
+	case "noop":
+		onComplete = types.NoOpOC
+	case "update":
+		onComplete = types.UpdateApplicationOC
+	case "call":
+		onComplete = types.NoOpOC
+	case "optin":
+		onComplete = types.OptInOC
+	case "clear":
+		onComplete = types.ClearStateOC
+	case "closeout":
+		onComplete = types.CloseOutOC
+	case "delete":
+		onComplete = types.DeleteApplicationOC
+	default:
+		return fmt.Errorf("invalid onComplete value")
+	}
+
+	var useAccount crypto.Account
+	if accountType == "signing" {
+		useAccount = account
+	} else if accountType == "transient" {
+		useAccount = transientAccount
+	}
+
+	var approvalProgramBytes []byte
+	var clearProgramBytes []byte
+	var err error
+
+	if approvalProgram != "" {
+		approvalProgramBytes, err = readTealProgram(approvalProgram)
+		if err != nil {
+			return err
+		}
+	}
+
+	if clearProgram != "" {
+		clearProgramBytes, err = readTealProgram(clearProgram)
+		if err != nil {
+			return err
+		}
+	}
+
+	if globalInts < 0 || globalBytes < 0 || localInts < 0 || localBytes < 0 || extraPages < 0 {
+		return fmt.Errorf("Values for globalInts, globalBytes, localInts, localBytes, and extraPages cannot be negative")
+	}
+
+	// populate args from methodArgs
+	if len(methodArgs) != len(abiMethod.Args) {
+		return fmt.Errorf("Provided argument count is incorrect. Expected %d, got %d", len(abiMethod.Args), len(methodArgs))
+	}
+
+	var preparedArgs []interface{}
+	for i, argSpec := range abiMethod.Args {
+		if argSpec.IsTransactionArg() {
+			// encodedArg is already a TransactionWithSigner
+			preparedArgs = append(preparedArgs, methodArgs[i])
+			continue
+		}
+
+		encodedArg, ok := methodArgs[i].([]byte)
+		if !ok {
+			return fmt.Errorf("Argument should be a byte slice")
+		}
+
+		var typeToDecode abi.Type
+		var err error
+
+		if argSpec.IsReferenceArg() {
+			switch argSpec.Type {
+			case abi.AccountReferenceType:
+				typeToDecode, err = abi.TypeOf("address")
+			case abi.ApplicationReferenceType, abi.AssetReferenceType:
+				typeToDecode, err = abi.TypeOf("uint64")
+			default:
+				return fmt.Errorf("Unknown reference type: %s", argSpec.Type)
+			}
+		} else {
+			typeToDecode, err = argSpec.GetTypeObject()
+		}
+		if err != nil {
+			return err
+		}
+
+		decodedArg, err := typeToDecode.Decode(encodedArg)
+		if err != nil {
+			return err
+		}
+
+		preparedArgs = append(preparedArgs, decodedArg)
+	}
+
+	methodCallParams := transaction.AddMethodCallParams{
+		AppID:           applicationId,
+		Method:          abiMethod,
+		MethodArgs:      preparedArgs,
+		Sender:          useAccount.Address,
+		SuggestedParams: sugParams,
+		OnComplete:      onComplete,
+		ApprovalProgram: approvalProgramBytes,
+		ClearProgram:    clearProgramBytes,
+		GlobalSchema: types.StateSchema{
+			NumUint:      uint64(globalInts),
+			NumByteSlice: uint64(globalBytes),
+		},
+		LocalSchema: types.StateSchema{
+			NumUint:      uint64(localInts),
+			NumByteSlice: uint64(localBytes),
+		},
+		ExtraPages: uint32(extraPages),
+		Signer:     accountTxSigner,
+	}
+
+	if useNonce {
+		methodCallParams.Note = note
+	}
+
+	return txComposer.AddMethodCall(methodCallParams)
+}
+
+func iAddTheNonce(nonce string) error {
+	note = []byte("I should be unique thanks to this nonce: " + nonce)
+	return nil
+}
+
+func buildTheTransactionGroupWithTheComposer(errorType string) error {
+	_, err := txComposer.BuildGroup()
+
+	switch errorType {
+	case "":
+		// no error expected
+		return err
+	case "zero group size error":
+		if err == nil || err.Error() != "attempting to build group with zero transactions" {
+			return fmt.Errorf("Expected error, but got: %v", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("Unknown error type: %s", errorType)
+	}
+}
+
+func theComposerShouldHaveAStatusOf(strStatus string) error {
+	var status transaction.AtomicTransactionComposerStatus
+	switch strStatus {
+	case "BUILDING":
+		status = transaction.BUILDING
+	case "BUILT":
+		status = transaction.BUILT
+	case "SIGNED":
+		status = transaction.SIGNED
+	case "SUBMITTED":
+		status = transaction.SUBMITTED
+	case "COMMITTED":
+		status = transaction.COMMITTED
+	default:
+		return fmt.Errorf("invalid status provided")
+	}
+
+	if status != txComposer.GetStatus() {
+		return fmt.Errorf("status does not match")
+	}
+
+	return nil
+}
+
+func iGatherSignaturesWithTheComposer() error {
+	signedTxs, err := txComposer.GatherSignatures()
+	sigTxs = signedTxs
+	return err
+}
+
+func theBaseEncodedSignedTransactionsShouldEqual(encodedTxsStr string) error {
+	encodedTxs := strings.Split(encodedTxsStr, ",")
+	if len(encodedTxs) != len(sigTxs) {
+		return fmt.Errorf("Actual and expected number of signed transactions don't match")
+	}
+
+	for i, encodedTx := range encodedTxs {
+		gold, err := base64.StdEncoding.DecodeString(encodedTx)
+		if err != nil {
+			return err
+		}
+		stxStr := base64.StdEncoding.EncodeToString(sigTxs[i])
+		if !bytes.Equal(gold, sigTxs[i]) {
+			return fmt.Errorf("Application signed transaction does not match the golden: %s != %s", stxStr, encodedTx)
+		}
+	}
+
+	return nil
+}
+
+func iBuildAPaymentTransactionWithSenderReceiverAmountCloseRemainderTo(sender, receiver string, amount int, closeTo string) error {
+	if amount < 0 {
+		return fmt.Errorf("amount must be a positive integer")
+	}
+
+	if sender == "transient" {
+		sender = transientAccount.Address.String()
+	}
+
+	if receiver == "transient" {
+		receiver = transientAccount.Address.String()
+	}
+
+	var err error
+	txn, err = transaction.MakePaymentTxn(sender, receiver, uint64(amount), nil, closeTo, sugParams)
+	tx = txn
+	return err
+}
+
+func iCreateATransactionWithSignerWithTheCurrentTransaction() error {
+	accountTxAndSigner = transaction.TransactionWithSigner{
+		Signer: accountTxSigner,
+		Txn:    txn,
+	}
+	return nil
+}
+
+func iAppendTheCurrentTransactionWithSignerToTheMethodArgumentsArray() error {
+	methodArgs = append(methodArgs, accountTxAndSigner)
+	return nil
+}
+
+func theDecodedTransactionShouldEqualTheOriginal() error {
+	var decodedTx types.SignedTxn
+	err := msgpack.Decode(stx, &decodedTx)
+	if err != nil {
+		return err
+	}
+
+	// This test isn't perfect as it's sensitive to non-meaningful changes (e.g. nil slice vs 0
+	// length slice), but it's good enough for now. We may want a Transaction.Equals method in the
+	// future.
+	if !reflect.DeepEqual(tx, decodedTx.Txn) {
+		return fmt.Errorf("Transactions unequal: %#v != %#v", tx, decodedTx.Txn)
+	}
+
+	return nil
+}
+
+func aDryrunResponseFileAndATransactionAtIndex(arg1, arg2 string) error {
+	data, err := loadResource(arg1)
+	if err != nil {
+		return err
+	}
+	dr, err := transaction.NewDryrunResponseFromJson(data)
+	if err != nil {
+		return err
+	}
+	idx, err := strconv.Atoi(arg2)
+	if err != nil {
+		return err
+	}
+	txTrace = dr.Txns[idx]
+	return nil
+}
+
+func callingAppTraceProduces(arg1 string) error {
+	cfg := transaction.DefaultStackPrinterConfig()
+	cfg.TopOfStackFirst = false
+	trace = txTrace.GetAppCallTrace(cfg)
+
+	data, err := loadResource(arg1)
+	if err != nil {
+		return err
+	}
+	if string(data) != trace {
+		return fmt.Errorf("No matching trace: \n'%s'\nvs\n'%s'\n", string(data), trace)
+	}
+	return nil
+}
+
+func aSourceMapJsonFile(srcMapJsonPath string) error {
+	b, err := loadResource(srcMapJsonPath)
+	if err != nil {
+		return err
+	}
+
+	ism := map[string]interface{}{}
+	if err := json.Unmarshal(b, &ism); err != nil {
+		return err
+	}
+
+	sourceMap, err = logic.DecodeSourceMap(ism)
+
+	return err
+}
+
+func theStringComposedOfPclineNumberEquals(expectedPcToLineString string) error {
+	var buff []string
+	for pc := 0; pc < len(sourceMap.PcToLine); pc++ {
+		line := sourceMap.PcToLine[pc]
+		buff = append(buff, fmt.Sprintf("%d:%d", pc, line))
+	}
+	actualStr := strings.Join(buff, ";")
+	if expectedPcToLineString != actualStr {
+		return fmt.Errorf("Expected %s got %s", expectedPcToLineString, actualStr)
+	}
+	return nil
+}
+
+func gettingTheLineAssociatedWithAPcEquals(strPc, strLine string) error {
+	pc, _ := strconv.Atoi(strPc)
+	expectedLine, _ := strconv.Atoi(strLine)
+
+	actualLine, ok := sourceMap.GetLineForPc(pc)
+	if !ok {
+		return fmt.Errorf("expected valid line, got !ok")
+	}
+
+	if actualLine != expectedLine {
+		return fmt.Errorf("expected %d got %d", expectedLine, actualLine)
+	}
+
+	return nil
+}
+
+func gettingTheLastPcAssociatedWithALineEquals(strLine, strPc string) error {
+	expectedPc, _ := strconv.Atoi(strPc)
+	line, _ := strconv.Atoi(strLine)
+
+	pcs := sourceMap.GetPcsForLine(line)
+	actualPc := pcs[len(pcs)-1]
+
+	if actualPc != expectedPc {
+		return fmt.Errorf("expected %d got %d", expectedPc, actualPc)
+	}
+
+	return nil
+}
+
+func iCompileATealProgramWithMappingEnabled(programPath string) error {
+	fileContents, err := loadResource(programPath)
+	if err != nil {
+		return err
+	}
+
+	result, err := aclv2.TealCompile(fileContents).Sourcemap(true).Do(context.Background())
+	if err != nil {
+		return err
+	}
+
+	if result.Sourcemap == nil {
+		return fmt.Errorf("No source map returned")
+	}
+
+	srcMapping = *result.Sourcemap
+	return nil
+}
+
+func theResultingSourceMapIsTheSameAsTheJson(expectedJsonPath string) error {
+
+	expectedJson, err := loadResource(expectedJsonPath)
+	if err != nil {
+		return err
+	}
+
+	// Marshal the map to json then unmarshal it so we get alphabetic ordering
+	expectedMap := map[string]interface{}{}
+	err = json.Unmarshal(expectedJson, &expectedMap)
+	if err != nil {
+		return err
+	}
+
+	expectedJson, err = json.Marshal(expectedMap)
+	if err != nil {
+		return err
+	}
+
+	// Turn it back into a string
+	actualJson, err := json.Marshal(srcMapping)
+	if err != nil {
+		return nil
+	}
+
+	if !bytes.Equal(expectedJson, actualJson) {
+		return fmt.Errorf("expected %s got %s", expectedJson, actualJson)
+	}
+
+	return nil
+}
+
+func takeB64encodedBytes(b64encodedBytes string) error {
+	var err error
+	seeminglyProgram, err = base64.StdEncoding.DecodeString(b64encodedBytes)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func heuristicCheckOverBytes() error {
+	_, sanityCheckError = crypto.MakeLogicSigAccountEscrowChecked(seeminglyProgram, nil)
+	return nil
+}
+
+func checkErrorIfMatching(errMsg string) error {
+	if len(errMsg) == 0 {
+		if sanityCheckError != nil {
+			return fmt.Errorf("expected err message to be empty, but sanity check says %w", sanityCheckError)
+		}
+	} else {
+		if sanityCheckError == nil || !strings.Contains(sanityCheckError.Error(), errMsg) {
+			return fmt.Errorf("expected err to contain %s, but sanity check error not matching: %w", errMsg, sanityCheckError)
+		}
 	}
 	return nil
 }

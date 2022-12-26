@@ -3,8 +3,8 @@ package indexer
 import (
 	"context"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // SearchForAssetsParams contains all of the query parameters for url serialization.
@@ -21,7 +21,8 @@ type SearchForAssetsParams struct {
 	// localstates.
 	IncludeAll bool `url:"include-all,omitempty"`
 
-	// Limit maximum number of results to return.
+	// Limit maximum number of results to return. There could be additional pages even
+	// if the limit is not reached.
 	Limit uint64 `url:"limit,omitempty"`
 
 	// Name filter just assets with the given name.
@@ -45,12 +46,14 @@ type SearchForAssets struct {
 // AssetID asset ID
 func (s *SearchForAssets) AssetID(AssetID uint64) *SearchForAssets {
 	s.p.AssetID = AssetID
+
 	return s
 }
 
 // Creator filter just assets with the given creator address.
 func (s *SearchForAssets) Creator(Creator string) *SearchForAssets {
 	s.p.Creator = Creator
+
 	return s
 }
 
@@ -59,18 +62,22 @@ func (s *SearchForAssets) Creator(Creator string) *SearchForAssets {
 // localstates.
 func (s *SearchForAssets) IncludeAll(IncludeAll bool) *SearchForAssets {
 	s.p.IncludeAll = IncludeAll
+
 	return s
 }
 
-// Limit maximum number of results to return.
+// Limit maximum number of results to return. There could be additional pages even
+// if the limit is not reached.
 func (s *SearchForAssets) Limit(Limit uint64) *SearchForAssets {
 	s.p.Limit = Limit
+
 	return s
 }
 
 // Name filter just assets with the given name.
 func (s *SearchForAssets) Name(Name string) *SearchForAssets {
 	s.p.Name = Name
+
 	return s
 }
 
@@ -78,12 +85,14 @@ func (s *SearchForAssets) Name(Name string) *SearchForAssets {
 // results.
 func (s *SearchForAssets) NextToken(NextToken string) *SearchForAssets {
 	s.p.NextToken = NextToken
+
 	return s
 }
 
 // Unit filter just assets with the given unit.
 func (s *SearchForAssets) Unit(Unit string) *SearchForAssets {
 	s.p.Unit = Unit
+
 	return s
 }
 

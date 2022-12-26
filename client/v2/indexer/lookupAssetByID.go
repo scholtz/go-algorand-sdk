@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // LookupAssetByIDParams contains all of the query parameters for url serialization.
@@ -31,6 +31,7 @@ type LookupAssetByID struct {
 // localstates.
 func (s *LookupAssetByID) IncludeAll(IncludeAll bool) *LookupAssetByID {
 	s.p.IncludeAll = IncludeAll
+
 	return s
 }
 

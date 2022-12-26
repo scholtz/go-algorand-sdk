@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
-	"github.com/algorand/go-algorand-sdk/types"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/types"
 )
 
 // PendingTransactionInformationParams contains all of the query parameters for url serialization.
@@ -16,7 +16,7 @@ type PendingTransactionInformationParams struct {
 	Format string `url:"format,omitempty"`
 }
 
-// PendingTransactionInformation given a transaction id of a recently submitted
+// PendingTransactionInformation given a transaction ID of a recently submitted
 // transaction, it returns information about it. There are several cases when this
 // might succeed:
 // - transaction committed (committed round > 0)

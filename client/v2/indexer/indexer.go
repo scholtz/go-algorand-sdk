@@ -3,7 +3,7 @@ package indexer
 import (
 	"context"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
 )
 
 const authHeader = "X-Indexer-API-Token"
@@ -28,8 +28,8 @@ func (c *Client) getRaw(ctx context.Context, path string, body interface{}, head
 // post sends a POST request to the given path with the given request object.
 // No query parameters will be sent if request is nil.
 // response must be a pointer to an object as post writes the response there.
-func (c *Client) post(ctx context.Context, response interface{}, path string, body interface{}, headers []*common.Header) error {
-	return (*common.Client)(c).Post(ctx, response, path, body, headers)
+func (c *Client) post(ctx context.Context, response interface{}, path string, params interface{}, headers []*common.Header, body interface{}) error {
+	return (*common.Client)(c).Post(ctx, response, path, params, headers, body)
 }
 
 // MakeClient is the factory for constructing a ClientV2 for a given endpoint.
@@ -59,6 +59,22 @@ func (c *Client) LookupAccountByID(accountId string) *LookupAccountByID {
 	return &LookupAccountByID{c: c, accountId: accountId}
 }
 
+func (c *Client) LookupAccountAssets(accountId string) *LookupAccountAssets {
+	return &LookupAccountAssets{c: c, accountId: accountId}
+}
+
+func (c *Client) LookupAccountCreatedAssets(accountId string) *LookupAccountCreatedAssets {
+	return &LookupAccountCreatedAssets{c: c, accountId: accountId}
+}
+
+func (c *Client) LookupAccountAppLocalStates(accountId string) *LookupAccountAppLocalStates {
+	return &LookupAccountAppLocalStates{c: c, accountId: accountId}
+}
+
+func (c *Client) LookupAccountCreatedApplications(accountId string) *LookupAccountCreatedApplications {
+	return &LookupAccountCreatedApplications{c: c, accountId: accountId}
+}
+
 func (c *Client) LookupAccountTransactions(accountId string) *LookupAccountTransactions {
 	return &LookupAccountTransactions{c: c, accountId: accountId}
 }
@@ -69,6 +85,18 @@ func (c *Client) SearchForApplications() *SearchForApplications {
 
 func (c *Client) LookupApplicationByID(applicationId uint64) *LookupApplicationByID {
 	return &LookupApplicationByID{c: c, applicationId: applicationId}
+}
+
+func (c *Client) SearchForApplicationBoxes(applicationId uint64) *SearchForApplicationBoxes {
+	return &SearchForApplicationBoxes{c: c, applicationId: applicationId}
+}
+
+func (c *Client) LookupApplicationBoxByIDAndName(applicationId uint64, name []byte) *LookupApplicationBoxByIDAndName {
+	return (&LookupApplicationBoxByIDAndName{c: c, applicationId: applicationId}).name(name)
+}
+
+func (c *Client) LookupApplicationLogsByID(applicationId uint64) *LookupApplicationLogsByID {
+	return &LookupApplicationLogsByID{c: c, applicationId: applicationId}
 }
 
 func (c *Client) SearchForAssets() *SearchForAssets {

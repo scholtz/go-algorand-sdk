@@ -10,8 +10,6 @@ import (
 	"os"
 	"path"
 	"strings"
-
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
 )
 
 func loadMockJsons(commaDelimitedFilenames, pathToJsons string) ([][]byte, error) {
@@ -65,14 +63,24 @@ func mockHttpResponsesInLoadedFromHelper(jsonfiles, directory string, status int
 	return err
 }
 
+var receivedMethod string
 var receivedPath string
 
 func mockServerRecordingRequestPaths() error {
 	mockServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedMethod = r.Method
 		receivedPath = r.URL.String()
 	}))
 	return nil
 }
+
+func expectTheRequestToBe(expectedMethod, expectedPath string) error {
+	if strings.ToLower(expectedMethod) != strings.ToLower(receivedMethod) {
+		return fmt.Errorf("method used to access mock server was %s but expected %s", receivedMethod, expectedMethod)
+	}
+	return expectThePathUsedToBe(expectedPath)
+}
+
 func expectThePathUsedToBe(expectedPath string) error {
 	if receivedPath != expectedPath {
 		return fmt.Errorf("path used to access mock server was %s but expected path %s", receivedPath, expectedPath)
@@ -94,36 +102,6 @@ func expectErrorStringToContain(contains string) error {
 	}
 	return fmt.Errorf("validated error did not contain expected substring, expected substring: %s,"+
 		"actual error string: %s", contains, globalErrForExamination.Error())
-}
-
-func comparisonCheck(varname string, expected, actual interface{}) error {
-	if expected != actual {
-		return fmt.Errorf("expected %s value %v did not match actual value %v", varname, expected, actual)
-	}
-	return nil
-}
-
-func findAssetInHoldingsList(list []models.AssetHolding, desiredId uint64) (models.AssetHolding, error) {
-	for _, holding := range list {
-		if holding.AssetId == desiredId {
-			return holding, nil
-		}
-	}
-	return models.AssetHolding{}, fmt.Errorf("could not find asset ID %d in passed list of asset holdings", desiredId)
-}
-
-func getSigtypeFromTransaction(transaction models.Transaction) string {
-	if len(transaction.Signature.Sig) != 0 {
-		return "sig"
-	}
-	if len(transaction.Signature.Multisig.Subsignature) != 0 {
-		return "msig"
-	}
-	if len(transaction.Signature.Logicsig.MultisigSignature.Subsignature) != 0 ||
-		len(transaction.Signature.Logicsig.Logic) != 0 {
-		return "lsig"
-	}
-	return "unknown sigtype"
 }
 
 func loadResource(filepath string) ([]byte, error) {

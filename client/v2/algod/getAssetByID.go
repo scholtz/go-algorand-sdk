@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
-// GetAssetByID given a asset id, it returns asset information including creator,
+// GetAssetByID given a asset ID, it returns asset information including creator,
 // name, total supply and special addresses.
 type GetAssetByID struct {
 	c *Client
@@ -18,6 +18,6 @@ type GetAssetByID struct {
 
 // Do performs the HTTP request
 func (s *GetAssetByID) Do(ctx context.Context, headers ...*common.Header) (response models.Asset, err error) {
-	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/assets/%v", s.assetId), nil, headers)
+	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/assets/%s", common.EscapeParams(s.assetId)...), nil, headers)
 	return
 }

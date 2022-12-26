@@ -5,8 +5,8 @@ import (
 	"encoding/base64"
 	"time"
 
-	"github.com/algorand/go-algorand-sdk/client/v2/common"
-	"github.com/algorand/go-algorand-sdk/client/v2/common/models"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common"
+	"github.com/algorand/go-algorand-sdk/v2/client/v2/common/models"
 )
 
 // SearchForTransactionsParams contains all of the query parameters for url serialization.
@@ -49,7 +49,8 @@ type SearchForTransactionsParams struct {
 	// receiver, if you would like to exclude them set this parameter to true.
 	ExcludeCloseTo bool `url:"exclude-close-to,omitempty"`
 
-	// Limit maximum number of results to return.
+	// Limit maximum number of results to return. There could be additional pages even
+	// if the limit is not reached.
 	Limit uint64 `url:"limit,omitempty"`
 
 	// MaxRound include results at or before the specified max-round.
@@ -84,7 +85,9 @@ type SearchForTransactionsParams struct {
 	TXID string `url:"txid,omitempty"`
 }
 
-// SearchForTransactions search for transactions.
+// SearchForTransactions search for transactions. Transactions are returned oldest
+// to newest unless the address parameter is used, in which case results are
+// returned newest to oldest.
 type SearchForTransactions struct {
 	c *Client
 
@@ -95,6 +98,7 @@ type SearchForTransactions struct {
 // transaction fields.
 func (s *SearchForTransactions) AddressString(AddressString string) *SearchForTransactions {
 	s.p.AddressString = AddressString
+
 	return s
 }
 
@@ -102,6 +106,7 @@ func (s *SearchForTransactions) AddressString(AddressString string) *SearchForTr
 // search for.
 func (s *SearchForTransactions) AddressRole(AddressRole string) *SearchForTransactions {
 	s.p.AddressRole = AddressRole
+
 	return s
 }
 
@@ -109,6 +114,7 @@ func (s *SearchForTransactions) AddressRole(AddressRole string) *SearchForTransa
 // formatted string.
 func (s *SearchForTransactions) AfterTimeString(AfterTime string) *SearchForTransactions {
 	s.p.AfterTime = AfterTime
+
 	return s
 }
 
@@ -123,12 +129,14 @@ func (s *SearchForTransactions) AfterTime(AfterTime time.Time) *SearchForTransac
 // ApplicationId application ID
 func (s *SearchForTransactions) ApplicationId(ApplicationId uint64) *SearchForTransactions {
 	s.p.ApplicationId = ApplicationId
+
 	return s
 }
 
 // AssetID asset ID
 func (s *SearchForTransactions) AssetID(AssetID uint64) *SearchForTransactions {
 	s.p.AssetID = AssetID
+
 	return s
 }
 
@@ -136,6 +144,7 @@ func (s *SearchForTransactions) AssetID(AssetID uint64) *SearchForTransactions {
 // formatted string.
 func (s *SearchForTransactions) BeforeTimeString(BeforeTime string) *SearchForTransactions {
 	s.p.BeforeTime = BeforeTime
+
 	return s
 }
 
@@ -152,6 +161,7 @@ func (s *SearchForTransactions) BeforeTime(BeforeTime time.Time) *SearchForTrans
 // case the asset will be used.
 func (s *SearchForTransactions) CurrencyGreaterThan(CurrencyGreaterThan uint64) *SearchForTransactions {
 	s.p.CurrencyGreaterThan = CurrencyGreaterThan
+
 	return s
 }
 
@@ -160,6 +170,7 @@ func (s *SearchForTransactions) CurrencyGreaterThan(CurrencyGreaterThan uint64) 
 // will be used.
 func (s *SearchForTransactions) CurrencyLessThan(CurrencyLessThan uint64) *SearchForTransactions {
 	s.p.CurrencyLessThan = CurrencyLessThan
+
 	return s
 }
 
@@ -168,24 +179,29 @@ func (s *SearchForTransactions) CurrencyLessThan(CurrencyLessThan uint64) *Searc
 // receiver, if you would like to exclude them set this parameter to true.
 func (s *SearchForTransactions) ExcludeCloseTo(ExcludeCloseTo bool) *SearchForTransactions {
 	s.p.ExcludeCloseTo = ExcludeCloseTo
+
 	return s
 }
 
-// Limit maximum number of results to return.
+// Limit maximum number of results to return. There could be additional pages even
+// if the limit is not reached.
 func (s *SearchForTransactions) Limit(Limit uint64) *SearchForTransactions {
 	s.p.Limit = Limit
+
 	return s
 }
 
 // MaxRound include results at or before the specified max-round.
 func (s *SearchForTransactions) MaxRound(MaxRound uint64) *SearchForTransactions {
 	s.p.MaxRound = MaxRound
+
 	return s
 }
 
 // MinRound include results at or after the specified min-round.
 func (s *SearchForTransactions) MinRound(MinRound uint64) *SearchForTransactions {
 	s.p.MinRound = MinRound
+
 	return s
 }
 
@@ -193,6 +209,7 @@ func (s *SearchForTransactions) MinRound(MinRound uint64) *SearchForTransactions
 // results.
 func (s *SearchForTransactions) NextToken(NextToken string) *SearchForTransactions {
 	s.p.NextToken = NextToken
+
 	return s
 }
 
@@ -206,12 +223,14 @@ func (s *SearchForTransactions) NotePrefix(NotePrefix []byte) *SearchForTransact
 // RekeyTo include results which include the rekey-to field.
 func (s *SearchForTransactions) RekeyTo(RekeyTo bool) *SearchForTransactions {
 	s.p.RekeyTo = RekeyTo
+
 	return s
 }
 
 // Round include results for the specified round.
 func (s *SearchForTransactions) Round(Round uint64) *SearchForTransactions {
 	s.p.Round = Round
+
 	return s
 }
 
@@ -221,18 +240,21 @@ func (s *SearchForTransactions) Round(Round uint64) *SearchForTransactions {
 // * lsig - LogicSig
 func (s *SearchForTransactions) SigType(SigType string) *SearchForTransactions {
 	s.p.SigType = SigType
+
 	return s
 }
 
 // TxType
 func (s *SearchForTransactions) TxType(TxType string) *SearchForTransactions {
 	s.p.TxType = TxType
+
 	return s
 }
 
 // TXID lookup the specific transaction by ID.
 func (s *SearchForTransactions) TXID(TXID string) *SearchForTransactions {
 	s.p.TXID = TXID
+
 	return s
 }
 
