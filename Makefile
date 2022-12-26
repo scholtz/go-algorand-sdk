@@ -48,9 +48,9 @@ docker-gosdk-run:
 docker-test: harness docker-gosdk-build docker-gosdk-run
 
 android:
-	gomobile bind -target=android -o=algosdk.aar -javapkg=com.algorand.algosdk github.com/algorand/go-algorand-sdk/mobile
+	gomobile bind -target=android -o=algosdk.aar -javapkg=com.algorand.algosdk github.com/algorand/go-algorand-sdk/v2/mobile
 
 ios:
-	gomobile bind -target=ios -o=AlgoSDK.xcframework -prefix=Algo github.com/algorand/go-algorand-sdk/mobile
+	gomobile bind -target=ios -o=AlgoSDK.xcframework -prefix=Algo github.com/algorand/go-algorand-sdk/v2/mobile
 
 .PHONY: test fmt android ios
