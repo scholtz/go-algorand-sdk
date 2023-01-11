@@ -168,8 +168,8 @@ type FalconSignatureStruct struct {
 	VerifyingKey          FalconVerifier  `codec:"vkey"`
 }
 
-// A sigslotCommit is a single slot in the sigs array that forms the state proof.
-type sigslotCommit struct {
+// A SigslotCommit is a single slot in the sigs array that forms the state proof.
+type SigslotCommit struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
 
 	// Sig is a signature by the participant on the expected message.
@@ -187,7 +187,7 @@ type sigslotCommit struct {
 type Reveal struct {
 	_struct struct{} `codec:",omitempty,omitemptyarray"`
 
-	SigSlot sigslotCommit `codec:"s"`
+	SigSlot SigslotCommit `codec:"s"`
 	Part    Participant   `codec:"p"`
 }
 
