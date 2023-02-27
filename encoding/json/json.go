@@ -34,6 +34,7 @@ func init() {
 	LenientCodecHandle.RecursiveEmptyCheck = true
 	LenientCodecHandle.Indent = 2
 	LenientCodecHandle.HTMLCharsAsIs = true
+	LenientCodecHandle.MapKeyAsString = true
 
 	JSONStrictHandle = new(codec.JsonHandle)
 	JSONStrictHandle.ErrorIfNoField = CodecHandle.ErrorIfNoField
