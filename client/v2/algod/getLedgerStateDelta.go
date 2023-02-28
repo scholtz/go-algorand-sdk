@@ -29,3 +29,8 @@ func (s *GetLedgerStateDelta) Do(ctx context.Context, headers ...*common.Header)
 	err = s.c.get(ctx, &response, fmt.Sprintf("/v2/deltas/%s", common.EscapeParams(s.round)...), s.p, headers)
 	return
 }
+
+// DoRaw performs the HTTP request and returns the raw bytes
+func (s *GetLedgerStateDelta) DoRaw(ctx context.Context, headers ...*common.Header) (response []byte, err error) {
+	return s.c.getRaw(ctx, fmt.Sprintf("/v2/deltas/%s", common.EscapeParams(s.round)...), s.p, headers)
+}
